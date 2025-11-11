@@ -1,0 +1,410 @@
+---
+title: 'EDA: Calidad del Aire'
+author: "David Ruiz"
+date: "2025-11-10"
+output: html_document
+---
+```{r Carga_librerias, message=FALSE, warning=FALSE}
+source('R-libraries-ICdD_p2.r')
+```
+
+- Carga de información
+
+```{r Carga_Info, message=FALSE, warning=FALSE}
+df= read_csv("global_air_quality_data_10000.csv") %>% data.frame()
+head(df)
+```
+
+```{r Dimension_DataSet}
+df |> dim()
+```
+
+```{r Data Type}
+
+df |> 
+  vis_dat() +
+  labs(title = "Estructura y Clases de Variables del Conjunto de datos de Sueño") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0),
+    axis.text.y = element_text(size = 8)
+  )
+
+```
+
+
+```{r}
+df |> skimr::skim() |> skimr::yank("character")
+```
+
+```{r}
+df |> skimr::skim() |> skimr::yank("Date")
+```
+
+```{r}
+df |> skimr::skim() |> skimr::yank("numeric")
+```
+
+
+```{r}
+df |> plot_num()
+```
+
+```{r, message=FALSE, warning=FALSE}
+df |> freq()
+```
+
+
+```{r}
+df %>% select(,Country) %>% unique()
+
+```
+
+
+```{r}
+df1 <- df %>%
+  mutate(Continent = case_when
+         (
+           Country %in% c('Turkey','UAE','China','South Korea','Japan','India','Thailand') ~ "Asia",
+           Country %in% c('Egypt','South Africa') ~ "Africa",
+           Country %in% c('Canada','Mexico','USA') ~ "N-America",
+           Country %in% c('Brazil') ~ "S-America",
+           Country %in% c('Russia','Spain','Germany','UK','France') ~ "Europe",
+           Country %in% c('Australia') ~ "Oceania"
+         ))
+```
+
+```{r}
+df1 <- df1 %>%
+  mutate(Hemisphere = case_when
+         (
+           Country %in% c('Turkey','UAE','China','South Korea','Japan','India','Thailand') ~ "North",
+           Country %in% c('Egypt') ~ "North",
+           Country %in% c('South Africa') ~ "South",
+           Country %in% c('Canada','Mexico','USA') ~ "North",
+           Country %in% c('Brazil') ~ "South",
+           Country %in% c('Russia','Spain','Germany','UK','France') ~ "North",
+           Country %in% c('Australia') ~ "South"
+         ))
+head(df1)
+```
+
+Cambio a data set Long
+
+```{r}
+df_long <- df1 %>% 
+    pivot_longer(!c(City, Country, Date,Continent,Hemisphere), names_to = "Metrica", values_to = "valor")
+df_long |> head()
+```
+
+```{r}
+
+df_long %>%
+  ggplot(mapping = aes(x = Hemisphere, y = valor, fill = Hemisphere)) +
+  geom_boxplot() +
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + # <-- 1. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) + # <-- 2. Corregido a scale_fill
+  labs(
+    title = "Comparación de Variables de Calidad del Aire por Hemisferio",
+    x = "Hemisferio", # <-- 3. Añadimos etiquetas a los ejes
+    y = "Valor"
+  ) +
+  theme_minimal() + # <-- 4. Usamos un tema base más limpio
+  theme(
+    # --- Ajustes para reducir el amontonamiento ---
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 7), # <-- 5. Rotamos y achicamos el texto del eje X
+    strip.text = element_text(size = 8, face = "bold"), # <-- 6. Achicamos el texto de las facetas
+    axis.title = element_text(size = 9), # <-- 7. Ajustamos el tamaño de los títulos de los ejes
+    
+    # --- Ajustes adicionales ---
+    plot.title = element_text(hjust = 0.5, size = 16), # Centramos y ajustamos el título principal
+    legend.position = "none" # Mantenemos la leyenda oculta
+  )
+
+```
+
+```{r}
+df_long %>%
+  ggplot(mapping = aes(x = valor, fill = Hemisphere)) + # <-- 1. 'valor' en el eje X
+  
+  # 2. Usamos geom_density en lugar de histograma
+  geom_density(alpha = 0.7) + 
+  
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + 
+  scale_fill_viridis_d(option = "plasma", end = .7) + 
+  labs(
+    title = "Densidad de Variables de Calidad del Aire por Hemisferio",
+    x = "Valor de la Métrica", # <-- 3. Actualizamos etiquetas
+    y = "Densidad"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 8, face = "bold"), 
+    axis.title = element_text(size = 9), 
+    plot.title = element_text(hjust = 0.5, size = 16),
+    legend.position = "right"
+  )
+```
+
+```{r}
+
+df_long %>%
+  ggplot(mapping = aes(x = Continent, y = valor, fill = Continent)) +
+  geom_boxplot() +
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + # <-- 1. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) + # <-- 2. Corregido a scale_fill
+  labs(
+    title = "Comparación de Variables de Calidad del Aire por Continente",
+    x = "Continent", # <-- 3. Añadimos etiquetas a los ejes
+    y = "Valor"
+  ) +
+  theme_minimal() + # <-- 4. Usamos un tema base más limpio
+  theme(
+    # --- Ajustes para reducir el amontonamiento ---
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 7), # <-- 5. Rotamos y achicamos el texto del eje X
+    strip.text = element_text(size = 8, face = "bold"), # <-- 6. Achicamos el texto de las facetas
+    axis.title = element_text(size = 9), # <-- 7. Ajustamos el tamaño de los títulos de los ejes
+    
+    # --- Ajustes adicionales ---
+    plot.title = element_text(hjust = 0.5, size = 16), # Centramos y ajustamos el título principal
+    legend.position = "none" # Mantenemos la leyenda oculta
+  )
+
+```
+
+```{r}
+df_long %>%
+  ggplot(mapping = aes(x = valor, fill = Continent)) + # <-- 1. 'valor' en el eje X
+  
+  # 2. Usamos geom_density en lugar de histograma
+  geom_density(alpha = 0.7) + 
+  
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + 
+  scale_fill_viridis_d(option = "plasma", end = .7) + 
+  labs(
+    title = "Densidad de Variables de Calidad del Aire por Continente",
+    x = "Valor de la Métrica", # <-- 3. Actualizamos etiquetas
+    y = "Densidad"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 8, face = "bold"), 
+    axis.title = element_text(size = 9), 
+    plot.title = element_text(hjust = 0.5, size = 16),
+    legend.position = "right"
+  )
+```
+
+
+```{r}
+
+df_long %>%
+  ggplot(mapping = aes(x = Country, y = valor, fill = Country)) +
+  geom_boxplot() +
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + # <-- 1. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) + # <-- 2. Corregido a scale_fill
+  labs(
+    title = "Comparación de Variables de Calidad del Aire por País",
+    x = "Hemisferio", # <-- 3. Añadimos etiquetas a los ejes
+    y = "Valor"
+  ) +
+  theme_minimal() + # <-- 4. Usamos un tema base más limpio
+  theme(
+    # --- Ajustes para reducir el amontonamiento ---
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 7), # <-- 5. Rotamos y achicamos el texto del eje X
+    strip.text = element_text(size = 8, face = "bold"), # <-- 6. Achicamos el texto de las facetas
+    axis.title = element_text(size = 9), # <-- 7. Ajustamos el tamaño de los títulos de los ejes
+    
+    # --- Ajustes adicionales ---
+    plot.title = element_text(hjust = 0.5, size = 16), # Centramos y ajustamos el título principal
+    legend.position = "none" # Mantenemos la leyenda oculta
+  )
+
+```
+
+```{r}
+df_long %>%
+  ggplot(mapping = aes(x = valor, fill = Country)) + # <-- 1. 'valor' en el eje X
+  
+  # 2. Usamos geom_density en lugar de histograma
+  geom_density(alpha = 0.7) + 
+  
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + 
+  scale_fill_viridis_d(option = "plasma", end = .7) + 
+  labs(
+    title = "Densidad de Variables de Calidad del Aire por País",
+    x = "Valor de la Métrica", # <-- 3. Actualizamos etiquetas
+    y = "Densidad"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 8, face = "bold"), 
+    axis.title = element_text(size = 9), 
+    plot.title = element_text(hjust = 0.5, size = 16),
+    legend.position = "right"
+  )
+```
+
+```{r}
+
+columnas_numericas <- c("PM2.5", "PM10", "NO2", "SO2", "CO", "O3", 
+                        "Temperature", "Humidity", "Wind.Speed")
+
+ggpairs(
+  df1,
+  columns = columnas_numericas,
+  progress = FALSE,
+  mapping = aes(color = Continent), 
+  
+  title = "Matriz de Correlación y Dispersión por Continente",
+  upper = list(
+    continuous = wrap(ggally_cor, size = 2)
+  )
+
+) +
+  theme_minimal()+
+  theme(
+  plot.title = element_text(size = 16, hjust = 0.5),
+  strip.text = element_text(size = 5, face = "bold"),
+  axis.text = element_text(size = 6),
+  legend.position = "bottom",
+  legend.title = element_text(size = 10),
+  legend.text = element_text(size = 8),
+  # Quita el fondo del panel (el área donde se dibujan los puntos)
+    panel.background = element_blank(), 
+    
+    # Quita el fondo general de todo el gráfico
+    plot.background = element_blank(), 
+    
+    # Quita las líneas de la cuadrícula (grid)
+    panel.grid = element_blank(),
+    
+    # (Opcional) Quita el borde del panel, si es que aparece
+    panel.border = element_blank()
+  )
+```
+
+```{r}
+
+columnas_numericas <- c("PM2.5", "PM10", "NO2", "SO2", "CO", "O3", 
+                        "Temperature", "Humidity", "Wind.Speed")
+
+ggpairs(
+  df1,
+  columns = columnas_numericas,
+  progress = FALSE,
+  mapping = aes(color = Hemisphere), 
+  
+  title = "Matriz de Correlación y Dispersión por Hemisferio",
+  upper = list(
+    continuous = wrap(ggally_cor, size = 2)
+  )
+
+) +
+  theme_minimal()+
+  theme(
+  plot.title = element_text(size = 16, hjust = 0.5),
+  strip.text = element_text(size = 5, face = "bold"),
+  axis.text = element_text(size = 6),
+  legend.position = "bottom",
+  legend.title = element_text(size = 10),
+  legend.text = element_text(size = 8),
+  # Quita el fondo del panel (el área donde se dibujan los puntos)
+    panel.background = element_blank(), 
+    
+    # Quita el fondo general de todo el gráfico
+    plot.background = element_blank(), 
+    
+    # Quita las líneas de la cuadrícula (grid)
+    panel.grid = element_blank(),
+    
+    # (Opcional) Quita el borde del panel, si es que aparece
+    panel.border = element_blank()
+  )
+```
+
+
+```{r}
+df1 %>% dplyr::group_by(Hemisphere) %>% dlookr::correlate() %>% plot()
+```
+
+
+```{r}
+df_long %>%
+  filter(Metrica == 'PM2.5') %>%
+  ggplot(mapping = aes(x = valor, fill = Continent)) +
+  # 1. Usamos 'alpha' para transparencia en lugar de 'color'
+  geom_density(alpha = 0.7, show.legend = TRUE) + 
+  facet_wrap(~Metrica, scales = "free", ncol = 3) + # <-- 2. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) +  # <-- 3. Corregido a scale_fill_*
+  labs(
+    title = "Distribución de Variables de Calidad del Aire", # <-- 4. Título único y claro
+    x = "Valor del Feature",
+    y = "Densidad",
+    fill = "Continente" # Título para la leyenda
+  ) +
+  theme_minimal() +
+  theme(
+    # --- Ajustes de tamaño y posición ---
+    plot.title = element_text(size = 16, hjust = 0.5),    # Título principal
+    strip.text = element_text(size = 9, face = "bold"), # Títulos de las facetas (más pequeños)
+    axis.title = element_text(size = 10),               # Títulos de los ejes
+    axis.text = element_text(size = 8),                 # Texto en los ejes (números)
+    
+    legend.position = "bottom",                         # <-- 5. Movemos la leyenda abajo
+    legend.title = element_text(size = 10),             # Título de la leyenda
+    legend.text = element_text(size = 8)                # Texto de la leyenda (más pequeño)
+  )
+```
+
+```{r}
+df_long %>%
+  filter(Metrica == 'PM2.5') %>%
+  ggplot(mapping = aes(x = valor, fill = Hemisphere)) +
+  # 1. Usamos 'alpha' para transparencia en lugar de 'color'
+  geom_density(alpha = 0.7, show.legend = TRUE) + 
+  facet_wrap(~Metrica, scales = "free", ncol = 3) + # <-- 2. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) +  # <-- 3. Corregido a scale_fill_*
+  labs(
+    title = "Distribución de Variables de la Calidad del Aire", # <-- 4. Título único y claro
+    x = "Valor del Feature",
+    y = "Densidad",
+    fill = "Hemisferio" # Título para la leyenda
+  ) +
+  theme_minimal() +
+  theme(
+    # --- Ajustes de tamaño y posición ---
+    plot.title = element_text(size = 16, hjust = 0.5),    # Título principal
+    strip.text = element_text(size = 9, face = "bold"), # Títulos de las facetas (más pequeños)
+    axis.title = element_text(size = 10),               # Títulos de los ejes
+    axis.text = element_text(size = 8),                 # Texto en los ejes (números)
+    
+    legend.position = "bottom",                         # <-- 5. Movemos la leyenda abajo
+    legend.title = element_text(size = 10),             # Título de la leyenda
+    legend.text = element_text(size = 8)                # Texto de la leyenda (más pequeño)
+  )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
