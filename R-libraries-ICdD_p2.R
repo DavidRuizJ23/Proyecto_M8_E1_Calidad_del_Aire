@@ -20,6 +20,7 @@ library(ggExtra) #visualizaciones
 library(ggforce)
 library(ggplot2) #visualizaciones
 library(ggplot2movies)
+library(ggcorrplot)
 library(grid)
 library(gridExtra)
 library(hexbin) # Auxiliar para visualización
@@ -32,6 +33,7 @@ library(magrittr) #Operadores de Asignación
 library(mlr)
 library(modeldata)
 library(moments) #Calcular la Kurtosis y la Skewness
+library(naniar)
 library(NbClust)
 library(palmerpenguins) #Data Set de los pingüinos
 library(plotly)
@@ -55,6 +57,7 @@ library(uwot)
 library(vegan)
 library(viridis)
 library(visdat) #Visualizador de los datos Faltantes
+library(zoo)
 require(igraph)
 
 # Librerías
