@@ -1,0 +1,1422 @@
+---
+title: "Data Cleaning + EDA"
+author: "David Ruiz"
+date: "2025-11-13"
+output: html_document
+---
+
+```{r Carga_librerias, message=FALSE, warning=FALSE}
+source('R-libraries-ICdD_p2.r')
+```
+
+- Carga de información
+
+```{r Carga_Info, message=FALSE, warning=FALSE}
+df= read_csv("global_air_quality_data_10000.csv") %>% data.frame()
+head(df)
+```
+
+```{r Dimension_DataSet}
+df |> dim()
+```
+
+```{r Data Type}
+
+df |> 
+  vis_dat() +
+  labs(title = "Estructura y Clases de Variables del Conjunto de Calidad del Aire") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0),
+    axis.text.y = element_text(size = 8)
+  )
+
+```
+
+
+```{r}
+df |> skimr::skim() |> skimr::yank("character")
+```
+
+```{r}
+df |> skimr::skim() |> skimr::yank("Date")
+
+```
+```{r}
+max(df$Date)-min(df$Date)
+```
+
+Observación. Si existe datos pérdidos, en teoría debio pasar 361 días y solo se cuentan 336 registros únicos
+
+Antes de completar las fechas, vamos a evitar duplicados de cada dia - Ciudad - País
+
+```{r}
+df1 <- df %>%
+  group_by(Country, City, Date) %>%
+    summarise(
+    across(where(is.numeric), ~mean(.x, na.rm = TRUE)),
+  ) %>%
+  ungroup()
+dim(df1)
+head(df1)
+```
+
+
+```{r}
+f_i <- min(df1$Date)
+f_f <- max(df1$Date)
+
+rango_completo_fechas <- seq.Date(from = f_i, to = f_f, by = "day")
+
+dfc <- df1 %>%
+  complete(
+    nesting(City, Country), 
+    Date = rango_completo_fechas
+  )
+
+dfc <- dfc %>% 
+  arrange(Country, City, Date)
+
+# Revisa el resultado:
+glimpse(dfc)
+```
+
+```{r}
+dfc |> vis_dat()
+```
+
+```{r}
+dfc |> skimr::skim() |> skimr::yank("numeric")
+```
+
+```{r}
+dim(dfc)
+missing_summary <- dfc %>%
+  group_by(Country, City) %>%
+  summarise(
+    Dias_Totales_Rango = n(), 
+    Dias_Faltantes = sum(is.na(PM2.5)), 
+    Porcentaje_Faltante = (Dias_Faltantes / Dias_Totales_Rango) * 100
+  ) %>%
+  
+  # 3. Ordenamos para ver los peores casos primero
+  arrange(desc(Porcentaje_Faltante))
+print(missing_summary)
+```
+
+
+```{r}
+dfc |> plot_num()
+```
+
+```{r, message=FALSE, warning=FALSE}
+dfc |> freq()
+```
+
+
+```{r}
+dfc %>% select(,City,Country) %>% unique()
+
+```
+
+
+```{r}
+df2 <- dfc %>%
+  mutate(Continent = case_when
+         (
+           Country %in% c('Turkey','UAE','China','South Korea','Japan','India','Thailand') ~ "Asia",
+           Country %in% c('Egypt','South Africa') ~ "Africa",
+           Country %in% c('Canada','Mexico','USA') ~ "N-America",
+           Country %in% c('Brazil') ~ "S-America",
+           Country %in% c('Russia','Spain','Germany','UK','France') ~ "Europe",
+           Country %in% c('Australia') ~ "Oceania"
+         ))
+```
+
+```{r}
+df2 <- df2 %>%
+  mutate(Hemisphere = case_when
+         (
+           Country %in% c('Turkey','UAE','China','South Korea','Japan','India','Thailand') ~ "North",
+           Country %in% c('Egypt') ~ "North",
+           Country %in% c('South Africa') ~ "South",
+           Country %in% c('Canada','Mexico','USA') ~ "North",
+           Country %in% c('Brazil') ~ "South",
+           Country %in% c('Russia','Spain','Germany','UK','France') ~ "North",
+           Country %in% c('Australia') ~ "South"
+         ))
+head(df2)
+```
++ ¿Hay alguna razón / patrón en los Missing Values?
+
+ ¿Ocurrencia por fecha específica?
+ 
+```{r}
+
+df2 %>%
+  gg_miss_span(
+    var = Date,           
+    span_every = 30,      
+    facet = City        
+  ) +
+  labs(title = "Patrón de Días Faltantes (NA) a lo largo del Tiempo",
+       x = "Bloque de 30 Días",
+       y = "Conteo de Días Faltantes") +
+  theme_minimal()
+```
+ 
+
+
+```{r}
+# Compara el % de NA para todas las variables, agrupado por Ciudad
+df2 %>%
+  gg_miss_fct(fct = Continent) +
+  labs(title = "Datos Faltantes por Ciudad")+
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1)
+  )
+```
+
+```{r}
+# Compara el % de NA para todas las variables, agrupado por Ciudad
+df2 %>% filter(Continent == 'Africa') %>%
+  gg_miss_fct(fct = City) +
+  labs(title = "Datos Faltantes por ciudad en Africa")+
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1)
+  )
+
+```
+
+```{r}
+# Compara el % de NA para todas las variables, agrupado por Ciudad
+df2 %>% filter(Continent == 'Asia') %>%
+  gg_miss_fct(fct = City) +
+  labs(title = "Datos Faltantes por ciudad en Asia")+
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1)
+  )
+```
+
+
+```{r}
+# Compara el % de NA para todas las variables, agrupado por Ciudad
+df2 %>% filter(Continent == 'Europe') %>%
+  gg_miss_fct(fct = City) +
+  labs(title = "Datos Faltantes por ciudad en Europa")+
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1)
+  )
+```
+
+
+```{r}
+# Compara el % de NA para todas las variables, agrupado por Ciudad
+df2 %>% filter(Continent == 'Europe') %>%
+  gg_miss_fct(fct = City) +
+  labs(title = "Datos Faltantes por ciudad en Europa")+
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1)
+  )
+```
+
+```{r}
+# Compara el % de NA para todas las variables, agrupado por Ciudad
+df2 %>% filter(Continent == 'N-America') %>%
+  gg_miss_fct(fct = City) +
+  labs(title = "Datos Faltantes por ciudad en Norte Ámercia")+
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1)
+  )
+```
+
+```{r}
+# Compara el % de NA para todas las variables, agrupado por Ciudad
+df2 %>% filter(Continent == 'Oceania') %>%
+  gg_miss_fct(fct = City) +
+  labs(title = "Datos Faltantes por ciudad en Oceanía")+
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1)
+  )
+```
+
+```{r}
+# Compara el % de NA para todas las variables, agrupado por Ciudad
+df2 %>% filter(Continent == 'S-America') %>%
+  gg_miss_fct(fct = City) +
+  labs(title = "Datos Faltantes por ciudad en Sur Ámercia")+
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1)
+  )
+```
+
+```{r}
+resumen_faltantes <- df2 %>%
+  # 1. Agrupamos por las dos variables
+  group_by(Country, City) %>%
+  
+  # 2. Calculamos las estadísticas
+  summarise(
+    #Total_Dias = n(),   
+    Faltantes_PM25 = sum(is.na(PM2.5)), 
+    #Porcentaje_PM25 = round(mean(is.na(PM2.5)) * 100, 2), 
+    .groups = "drop"
+  ) %>%
+  
+  # 3. Ordenamos para ver los peores casos arriba
+  arrange(desc(Faltantes_PM25))
+
+# Ver la tabla
+print(resumen_faltantes)
+```
+
+
+```{r}
+
+df_i <- df2 %>%
+
+  group_by(Country, City) %>%
+  arrange(Date) %>%
+  mutate(across(
+    where(is.numeric), 
+    ~zoo::na.approx(., na.rm = FALSE)
+  )) %>%
+  
+  fill(
+    where(is.numeric), 
+    .direction = "downup"
+  ) %>%
+  
+
+  ungroup()
+
+# Verificación final
+sum(is.na(df_i$PM2.5))
+
+head(df_i)
+```
+
+```{r}
+df_i |> vis_dat()
+```
+
+```{r}
+df_i |> skimr::skim() |> skimr::yank("numeric")
+```
+
+```{r}
+df_i |> plot_num()
+```
+
+```{r, message=FALSE, warning=FALSE}
+dfc |> freq()
+```
+
+Cambio a data set Long
+
+```{r}
+df_long <- df_i %>% 
+    pivot_longer(!c(City, Country, Date,Continent,Hemisphere), names_to = "Metrica", values_to = "valor")
+df_long |> head()
+```
+
+```{r}
+
+df_long %>%
+  ggplot(mapping = aes(x = Hemisphere, y = valor, fill = Hemisphere)) +
+  geom_boxplot() +
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + # <-- 1. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) + # <-- 2. Corregido a scale_fill
+  labs(
+    title = "Comparación de Variables de Calidad del Aire por Hemisferio",
+    x = "Hemisferio", # <-- 3. Añadimos etiquetas a los ejes
+    y = "Valor"
+  ) +
+  theme_minimal() + # <-- 4. Usamos un tema base más limpio
+  theme(
+    # --- Ajustes para reducir el amontonamiento ---
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 7), # <-- 5. Rotamos y achicamos el texto del eje X
+    strip.text = element_text(size = 8, face = "bold"), # <-- 6. Achicamos el texto de las facetas
+    axis.title = element_text(size = 9), # <-- 7. Ajustamos el tamaño de los títulos de los ejes
+    
+    # --- Ajustes adicionales ---
+    plot.title = element_text(hjust = 0.5, size = 16), # Centramos y ajustamos el título principal
+    legend.position = "none" # Mantenemos la leyenda oculta
+  )
+
+```
+
+```{r}
+df_long %>%
+  ggplot(mapping = aes(x = valor, fill = Hemisphere)) + # <-- 1. 'valor' en el eje X
+  
+  # 2. Usamos geom_density en lugar de histograma
+  geom_density(alpha = 0.7) + 
+  
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + 
+  scale_fill_viridis_d(option = "plasma", end = .7) + 
+  labs(
+    title = "Densidad de Variables de Calidad del Aire por Hemisferio",
+    x = "Valor de la Métrica", # <-- 3. Actualizamos etiquetas
+    y = "Densidad"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 8, face = "bold"), 
+    axis.title = element_text(size = 9), 
+    plot.title = element_text(hjust = 0.5, size = 16),
+    legend.position = "right"
+  )
+```
+
+```{r}
+
+df_long %>%
+  ggplot(mapping = aes(x = Continent, y = valor, fill = Continent)) +
+  geom_boxplot() +
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + # <-- 1. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) + # <-- 2. Corregido a scale_fill
+  labs(
+    title = "Comparación de Variables de Calidad del Aire por Continente",
+    x = "Continent", # <-- 3. Añadimos etiquetas a los ejes
+    y = "Valor"
+  ) +
+  theme_minimal() + # <-- 4. Usamos un tema base más limpio
+  theme(
+    # --- Ajustes para reducir el amontonamiento ---
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 7), # <-- 5. Rotamos y achicamos el texto del eje X
+    strip.text = element_text(size = 8, face = "bold"), # <-- 6. Achicamos el texto de las facetas
+    axis.title = element_text(size = 9), # <-- 7. Ajustamos el tamaño de los títulos de los ejes
+    
+    # --- Ajustes adicionales ---
+    plot.title = element_text(hjust = 0.5, size = 16), # Centramos y ajustamos el título principal
+    legend.position = "none" # Mantenemos la leyenda oculta
+  )
+
+```
+
+```{r}
+df_long %>%
+  ggplot(mapping = aes(x = valor, fill = Continent)) + # <-- 1. 'valor' en el eje X
+  
+  # 2. Usamos geom_density en lugar de histograma
+  geom_density(alpha = 0.7) + 
+  
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + 
+  scale_fill_viridis_d(option = "plasma", end = .7) + 
+  labs(
+    title = "Densidad de Variables de Calidad del Aire por Continente",
+    x = "Valor de la Métrica", # <-- 3. Actualizamos etiquetas
+    y = "Densidad"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 8, face = "bold"), 
+    axis.title = element_text(size = 9), 
+    plot.title = element_text(hjust = 0.5, size = 16),
+    legend.position = "right"
+  )
+```
+
+
+```{r}
+
+df_long %>%
+  ggplot(mapping = aes(x = Country, y = valor, fill = Country)) +
+  geom_boxplot() +
+  facet_wrap(~ Metrica, scales = "free", ncol = 3) + # <-- 1. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) + # <-- 2. Corregido a scale_fill
+  labs(
+    title = "Comparación de Variables de Calidad del Aire por País",
+    x = "Hemisferio", # <-- 3. Añadimos etiquetas a los ejes
+    y = "Valor"
+  ) +
+  theme_minimal() + # <-- 4. Usamos un tema base más limpio
+  theme(
+    # --- Ajustes para reducir el amontonamiento ---
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 7), # <-- 5. Rotamos y achicamos el texto del eje X
+    strip.text = element_text(size = 8, face = "bold"), # <-- 6. Achicamos el texto de las facetas
+    axis.title = element_text(size = 9), # <-- 7. Ajustamos el tamaño de los títulos de los ejes
+    
+    # --- Ajustes adicionales ---
+    plot.title = element_text(hjust = 0.5, size = 16), # Centramos y ajustamos el título principal
+    legend.position = "none" # Mantenemos la leyenda oculta
+  )
+
+```
+
+
+```{r}
+
+columnas_numericas <- c("PM2.5", "PM10", "NO2", "SO2", "CO", "O3", 
+                        "Temperature", "Humidity", "Wind.Speed")
+
+ggpairs(
+  df_i,
+  columns = columnas_numericas,
+  progress = FALSE,
+  mapping = aes(color = Continent), 
+  
+  title = "Matriz de Correlación y Dispersión por Continente",
+  upper = list(
+    continuous = wrap(ggally_cor, size = 2)
+  )
+
+) +
+  theme_minimal()+
+  theme(
+  plot.title = element_text(size = 16, hjust = 0.5),
+  strip.text = element_text(size = 5, face = "bold"),
+  axis.text = element_text(size = 6),
+  legend.position = "bottom",
+  legend.title = element_text(size = 10),
+  legend.text = element_text(size = 8),
+  # Quita el fondo del panel (el área donde se dibujan los puntos)
+    panel.background = element_blank(), 
+    
+    # Quita el fondo general de todo el gráfico
+    plot.background = element_blank(), 
+    
+    # Quita las líneas de la cuadrícula (grid)
+    panel.grid = element_blank(),
+    
+    # (Opcional) Quita el borde del panel, si es que aparece
+    panel.border = element_blank()
+  )
+```
+
+```{r}
+
+columnas_numericas <- c("PM2.5", "PM10", "NO2", "SO2", "CO", "O3", 
+                        "Temperature", "Humidity", "Wind.Speed")
+
+ggpairs(
+  df_i,
+  columns = columnas_numericas,
+  progress = FALSE,
+  mapping = aes(color = Hemisphere), 
+  
+  title = "Matriz de Correlación y Dispersión por Hemisferio",
+  upper = list(
+    continuous = wrap(ggally_cor, size = 2)
+  )
+
+) +
+  theme_minimal()+
+  theme(
+  plot.title = element_text(size = 16, hjust = 0.5),
+  strip.text = element_text(size = 5, face = "bold"),
+  axis.text = element_text(size = 6),
+  legend.position = "bottom",
+  legend.title = element_text(size = 10),
+  legend.text = element_text(size = 8),
+  # Quita el fondo del panel (el área donde se dibujan los puntos)
+    panel.background = element_blank(), 
+    
+    # Quita el fondo general de todo el gráfico
+    plot.background = element_blank(), 
+    
+    # Quita las líneas de la cuadrícula (grid)
+    panel.grid = element_blank(),
+    
+    # (Opcional) Quita el borde del panel, si es que aparece
+    panel.border = element_blank()
+  )
+```
+
+
+```{r}
+df_long %>%
+  filter(Metrica == 'O3') %>%
+  ggplot(mapping = aes(x = valor, fill = Continent)) +
+  # 1. Usamos 'alpha' para transparencia en lugar de 'color'
+  geom_density(alpha = 0.7, show.legend = TRUE) + 
+  facet_wrap(~Metrica, scales = "free", ncol = 3) + # <-- 2. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) +  # <-- 3. Corregido a scale_fill_*
+  labs(
+    title = "Distribución de Variables de O3", # <-- 4. Título único y claro
+    x = "Valor del Feature",
+    y = "Densidad",
+    fill = "Continente" # Título para la leyenda
+  ) +
+  theme_minimal() +
+  theme(
+    # --- Ajustes de tamaño y posición ---
+    plot.title = element_text(size = 16, hjust = 0.5),    # Título principal
+    strip.text = element_text(size = 9, face = "bold"), # Títulos de las facetas (más pequeños)
+    axis.title = element_text(size = 10),               # Títulos de los ejes
+    axis.text = element_text(size = 8),                 # Texto en los ejes (números)
+    
+    legend.position = "bottom",                         # <-- 5. Movemos la leyenda abajo
+    legend.title = element_text(size = 10),             # Título de la leyenda
+    legend.text = element_text(size = 8)                # Texto de la leyenda (más pequeño)
+  )
+```
+
+```{r}
+df_long %>%
+  filter(Metrica == 'PM2.5') %>%
+  ggplot(mapping = aes(x = valor, fill = Hemisphere)) +
+  # 1. Usamos 'alpha' para transparencia en lugar de 'color'
+  geom_density(alpha = 0.7, show.legend = TRUE) + 
+  facet_wrap(~Metrica, scales = "free", ncol = 3) + # <-- 2. Reducimos el número de columnas
+  scale_fill_viridis_d(option = "plasma", end = .7) +  # <-- 3. Corregido a scale_fill_*
+  labs(
+    title = "Distribución de Variables de la PM 2.5", # <-- 4. Título único y claro
+    x = "Valor del Feature",
+    y = "Densidad",
+    fill = "Hemisferio" # Título para la leyenda
+  ) +
+  theme_minimal() +
+  theme(
+    # --- Ajustes de tamaño y posición ---
+    plot.title = element_text(size = 16, hjust = 0.5),    # Título principal
+    strip.text = element_text(size = 9, face = "bold"), # Títulos de las facetas (más pequeños)
+    axis.title = element_text(size = 10),               # Títulos de los ejes
+    axis.text = element_text(size = 8),                 # Texto en los ejes (números)
+    
+    legend.position = "bottom",                         # <-- 5. Movemos la leyenda abajo
+    legend.title = element_text(size = 10),             # Título de la leyenda
+    legend.text = element_text(size = 8)                # Texto de la leyenda (más pequeño)
+  )
+```
+
+```{r}
+
+df_promedio_continente <- df_i %>%
+  group_by(Continent, Date) %>%
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_promedio_continente %>%
+  ggplot(aes(x = Date, y = PM2.5_Promedio, color = Continent)) +
+  
+  geom_line(size = 0.8) +
+  
+  # CAMBIO CLAVE AQUÍ:
+  # scales = "fixed" obliga a que todos los gráficos compartan el mismo eje Y.
+  # (Es el comportamiento por defecto, así que también podrías borrar el argumento scales)
+  facet_wrap(~ Continent, scales = "fixed", ncol = 2) +
+  
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de PM2.5 por Continente (Escala Comparativa)",
+    subtitle = "Todos los paneles usan el mismo rango en el eje Y para comparar magnitudes",
+    y = "Promedio PM2.5 (µg/m³)",
+    x = "Fecha"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    
+    # Opcional: Agregar líneas de cuadrícula más claras para facilitar la lectura
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+
+df_promedio_continente <- df_i %>% 
+  group_by(Continent, Date) %>%
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    Temp_Promedio = mean(Temperature, na.rm = TRUE), 
+    .groups = "drop"
+  )
+
+max_pm <- max(df_promedio_continente$PM2.5_Promedio, na.rm = TRUE)
+max_temp <- max(df_promedio_continente$Temp_Promedio, na.rm = TRUE)
+scale_factor <- max_pm / max_temp 
+
+df_promedio_continente %>%
+  ggplot(aes(x = Date)) +
+  geom_line(aes(y = PM2.5_Promedio, color = "PM2.5"), size = 0.8) +
+  geom_line(aes(y = Temp_Promedio * scale_factor, color = "Temperatura"), 
+            size = 0.8, linetype = "dashed") +
+    facet_wrap(~ Continent, scales = "fixed", ncol = 2) +
+  scale_y_continuous(
+    name = "Promedio PM2.5 (µg/m³)",
+    sec.axis = sec_axis(~ . / scale_factor, name = "Temperatura (°C)") 
+  ) +
+  
+  scale_color_manual(values = c("PM2.5" = "black", "Temperatura" = "blue")) +
+  
+  theme_minimal() +
+  labs(
+    title = "Relación entre PM2.5 y Temperatura por Continente",
+    subtitle = "PM2.5 (Línea sólida, Eje Izq) vs Temperatura (Línea punteada, Eje Der)",
+    x = "Fecha",
+    color = "Variable" 
+  ) +
+  theme(
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+
+    axis.title.y.left = element_text(color = "black", face = "bold"),
+    axis.title.y.right = element_text(color = "blue", face = "bold", vjust = 1.5) 
+  )
+```
+
+
+```{r}
+
+df_promedio_continente_o <- df_i %>%
+  group_by(Continent, Date) %>%
+  summarise(
+    O3_Promedio = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_promedio_continente_o %>%
+  ggplot(aes(x = Date, y = O3_Promedio, color = Continent)) +
+  
+  geom_line(size = 0.8) +
+  
+  # CAMBIO CLAVE AQUÍ:
+  # scales = "fixed" obliga a que todos los gráficos compartan el mismo eje Y.
+  # (Es el comportamiento por defecto, así que también podrías borrar el argumento scales)
+  facet_wrap(~ Continent, scales = "fixed", ncol = 2) +
+  
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de O3 por Continente (Escala Comparativa)",
+    subtitle = "Todos los paneles usan el mismo rango en el eje Y para comparar magnitudes",
+    y = "Promedio O3",
+    x = "Fecha"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    
+    # Opcional: Agregar líneas de cuadrícula más claras para facilitar la lectura
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+
+```{r}
+# 1. PREPARACIÓN: Calculamos el PROMEDIO diario por PAÍS
+df_promedio_pais <- df_i %>%
+  group_by(Country, Date) %>%  # <--- Cambio clave: Agrupamos por País
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 2. VISUALIZACIÓN: Paneles separados por País
+df_promedio_pais %>%
+  ggplot(aes(x = Date, y = PM2.5_Promedio, color = Country)) +
+  
+  geom_line(size = 0.7) + # Línea un poco más fina para que se vea limpia
+  
+  # Usamos facet_wrap por Country con escala FIJA
+  # ncol = 4 organiza los gráficos en 4 columnas (ajusta este número según cuántos países tengas)
+  facet_wrap(~ Country, scales = "fixed", ncol = 4) + 
+  
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de PM2.5 por País (Escala Comparativa)",
+    subtitle = "Todos los países bajo la misma escala vertical para comparar magnitud real",
+    y = "Promedio PM2.5 (µg/m³)",
+    x = "Fecha"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 8, face = "bold"), # Texto un poco más pequeño para que quepa
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), # Rotamos 90 grados si hay muchos paneles
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+```{r}
+# 1. PREPARACIÓN: Calculamos el PROMEDIO diario por PAÍS
+df_promedio_pais_o <- df_i %>%
+  group_by(Country, Date) %>%  # <--- Cambio clave: Agrupamos por País
+  summarise(
+    O3_Promedio = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 2. VISUALIZACIÓN: Paneles separados por País
+df_promedio_pais_o %>%
+  ggplot(aes(x = Date, y = O3_Promedio, color = Country)) +
+  
+  geom_line(size = 0.7) + # Línea un poco más fina para que se vea limpia
+  
+  # Usamos facet_wrap por Country con escala FIJA
+  # ncol = 4 organiza los gráficos en 4 columnas (ajusta este número según cuántos países tengas)
+  facet_wrap(~ Country, scales = "fixed", ncol = 4) + 
+  
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de O3 por País (Escala Comparativa)",
+    subtitle = "Todos los países bajo la misma escala vertical para comparar magnitud real",
+    y = "Promedio O3",
+    x = "Fecha"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 8, face = "bold"), # Texto un poco más pequeño para que quepa
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), # Rotamos 90 grados si hay muchos paneles
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+Ajustemos el Data set para tener información Mensual y por estaciones del año
+
+```{r}
+
+meses_espanol <- c("ene", "feb", "mar", "abr", "may", "jun", 
+                   "jul", "ago", "sep", "oct", "nov", "dic")
+
+Q_labels <- c('Q-1','Q-2','Q-3','Q-4')
+
+df_i2 = df_i %>% 
+  mutate(
+    Quarter = factor(quarter(Date),levels=1:4,labels=Q_labels) ,
+    Month = factor(month(Date), levels = 1:12, labels = meses_espanol)
+    
+  )
+
+df_i2 |> head()
+
+```
+
+```{r}
+df_i2 %>%
+  mutate(Season = case_when
+         (
+           #Hemisferio Norte
+           Hemisphere %in% c('North') & Month %in% c('dic','ene','feb') ~ "Winter",
+           Hemisphere %in% c('North') & Month %in% c('mar','abr','may') ~ "Spring",
+           Hemisphere %in% c('North') & Month %in% c('jun','jul','ago') ~ "Summer",
+           Hemisphere %in% c('North') & Month %in% c('sep','oct','nov') ~ "Autumn",
+           #Hemisferio Sur
+           Hemisphere %in% c('South') & Month %in% c('dic','ene','feb') ~ "Summer",
+           Hemisphere %in% c('South') & Month %in% c('mar','abr','may') ~ "Autumn",
+           Hemisphere %in% c('South') & Month %in% c('jun','jul','ago') ~ "Winter",
+           Hemisphere %in% c('South') & Month %in% c('sep','oct','nov') ~ "Spring"
+         ))
+```
+
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  group_by(Continent, Month) %>%
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = PM2.5_Promedio, color = Continent, group = Continent)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Continent, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de PM2.5 por Continente",
+    subtitle = "Comparativa mensual",
+    y = "Promedio PM2.5 (µg/m³)",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  group_by(Continent, Month) %>%
+  summarise(
+    O3_avg = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = O3_avg, color = Continent, group = Continent)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Continent, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de O3 por Continente",
+    subtitle = "Comparativa mensual",
+    y = "O3",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+Al parecer Sur Ámerica tiene los niveles más altos en espocas de calor
+
+```{r}
+
+df_mensual_compare <- df_i2 %>% 
+  group_by(Continent, Month) %>%
+  summarise(
+    PM2.5_Val = mean(PM2.5, na.rm = TRUE),
+    O3_Val = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+max_pm <- max(df_mensual_compare$PM2.5_Val, na.rm = TRUE)
+max_o3 <- max(df_mensual_compare$O3_Val, na.rm = TRUE)
+coeff <- max_pm / max_o3 
+
+df_mensual_compare %>%
+  
+  ggplot(aes(x = Month, group = Continent)) +
+  
+  geom_line(aes(y = PM2.5_Val, color = "PM2.5"), size = 1) +
+  geom_point(aes(y = PM2.5_Val, color = "PM2.5"), size = 2) +
+  
+  geom_line(aes(y = O3_Val * coeff, color = "O3 (Ozono)"), size = 1, linetype = "dashed") +
+  
+  facet_wrap(~ Continent, scales = "fixed", ncol = 2) +
+  
+  scale_y_continuous(
+    name = "Promedio PM2.5 (µg/m³)", 
+    sec.axis = sec_axis(~ . / coeff, name = "Promedio Ozono (µg/m³)") 
+  ) +
+  
+  scale_color_manual(values = c("PM2.5" = "#2c3e50", "O3 (Ozono)" = "#e67e22")) +
+  theme_minimal() +
+  labs(
+    title = "Comparativa Estacional: PM2.5 vs Ozono",
+    subtitle = "Línea Sólida = PM2.5 | Línea Punteada = Ozono",
+    x = "Mes",
+    color = "Contaminante"
+  ) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    
+    axis.title.y.left = element_text(color = "#2c3e50", face = "bold"),
+    axis.title.y.right = element_text(color = "#e67e22", face = "bold", vjust = 1.5)
+  )
+```
+
+# Deep Dive PM 2.5 por país
+
+### Por país
+
+### Hemisferio Norte
+
+#### Africa - Egipto 
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Country == 'Egypt')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = PM2.5_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de PM2.5 por País Asíatico",
+    subtitle = "Comparativa mensual",
+    y = "Promedio PM2.5 (µg/m³)",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+Egipto tiene un punto atípico en dic 2023 ¿por qué?
+#### Asia
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Continent == 'Asia')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = PM2.5_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de PM2.5 por País Asíatico",
+    subtitle = "Comparativa mensual",
+    y = "Promedio PM2.5 (µg/m³)",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+#### Europa
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Continent == 'Europe')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = PM2.5_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de PM2.5 por País Europeo",
+    subtitle = "Comparativa mensual",
+    y = "Promedio PM2.5 (µg/m³)",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+#### Norte Ámerica
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Continent == 'N-America')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = PM2.5_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de PM2.5 por País de Norte Ámerica",
+    subtitle = "Comparativa mensual",
+    y = "Promedio PM2.5 (µg/m³)",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+Verano (Jun-Ago en Norte): Deberías ver que el Ozono (Naranja) sube (por el sol) y a menudo el PM2.5 baja (por mejor dispersión del aire).
+
+Invierno (Dic-Feb en Norte): El Ozono baja y el PM2.5 (Azul) suele subir (por inversiones térmicas y calefacción).
+
+En México, CDMX sube en mayo los niveles PM 2.5.... en Canada que usualmente es frío y que en Mx y USA subieron los niveles, Canada bajan
+
+
+### Hemisferio Sur
+
+#### Africa - South Africa
+
+##### Para el Deep Dive de Hemisferio Sur, solo graficaremos a South Africa porque Oceanía y Sur Ámerica solo tienen un país CD
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Country == 'South Africa')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    PM2.5_Promedio = mean(PM2.5, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = PM2.5_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de PM2.5 por País Asíatico",
+    subtitle = "Comparativa mensual",
+    y = "Promedio PM2.5 (µg/m³)",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+# Deep Dive O3 por país
+
+### Por país
+
+### Hemisferio Norte
+
+#### Africa - Egipto 
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Country == 'Egypt')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    O3_Promedio = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = O3_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de O3 para Egipto",
+    subtitle = "Comparativa mensual",
+    y = "O3",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+Egipto tiene un punto atípico en dic 2023 ¿por qué?
+#### Asia
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Continent == 'Asia')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    O3_Promedio = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = O3_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de O3 por País Asíatico",
+    subtitle = "Comparativa mensual",
+    y = "Promedio O3",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+#### Europa
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Continent == 'Europe')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    O3_Promedio = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = O3_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de O3 por País Europeo",
+    subtitle = "Comparativa mensual",
+    y = "Promedio O3)",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+Es extraño el comportamiento de Alemania por que desde agosto debería comenzar a bajar la temperatura y se ve una "montaña". Más adelante lo cruzamos con temperatura
+
+
+
+#### Norte Ámerica
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Continent == 'N-America')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    O3_Promedio = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = O3_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de O3 por País de Norte Ámerica",
+    subtitle = "Comparativa mensual",
+    y = "O3",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+Aparentemente hay un pico a la baja de O3 atípico en Canada, crucemos con Temperatura
+
+### Hemisferio Sur
+
+#### Africa - South Africa
+
+##### Para el Deep Dive de Hemisferio Sur, solo graficaremos a South Africa porque Oceanía y Sur Ámerica solo tienen un país CD
+```{r}
+df_avg_continen_Month <- df_i2 %>%
+  filter(Country == 'South Africa')  %>%
+  group_by(Country, Month) %>%
+  summarise(
+    O3_Promedio = mean(O3, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_avg_continen_Month %>%
+  ggplot(aes(x = Month, y = O3_Promedio, color = Country, group = Country)) +
+  
+  geom_line(size = 0.5) +
+  geom_point(size = 2) + 
+  facet_wrap(~ Country, scales = "fixed", ncol = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  theme_minimal() +
+  labs(
+    title = "Tendencia Promedio de O3 por País Asíatico",
+    subtitle = "Comparativa mensual",
+    y = "O3",
+    x = "Mes"
+  ) +
+  theme(
+    legend.position = "none", 
+    strip.text = element_text(size = 11, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 1),
+    panel.grid.major.y = element_line(color = "gray90")
+  )
+```
+
+```{r}
+colnames(df_i2)
+```
+
+
+```{r}
+
+tabla_promedios <- df_i2 %>%
+  group_by(Country) %>%
+  summarise(
+    O3 = round(mean(O3, na.rm = TRUE), 2),
+    PM2.5 = round(mean(PM2.5, na.rm = TRUE), 2),
+    Temperatura = round(mean(Temperature, na.rm = TRUE), 2),
+    Velocidad_Viento = round(mean(Wind.Speed, na.rm = TRUE), 2), 
+    Humedad = round(mean(Humidity, na.rm = TRUE), 2)
+  ) %>%
+  
+  # Opcional: Ordenar por PM2.5 de mayor a menor para ver los más contaminados arriba
+  arrange(desc(PM2.5))
+
+# Ver la tabla en consola
+print(tabla_promedios)
+```
+
+```{r}
+
+tabla_larga <- tabla_promedios %>%
+  pivot_longer(
+    cols = -Country,       # Tomamos todas las columnas menos el País
+    names_to = "Variable", # Nombre de la nueva columna de categorías
+    values_to = "Valor"    # Nombre de la nueva columna de valores
+  )
+
+# 2. Creamos el Gráfico Facetado
+ggplot(tabla_larga, aes(x = reorder(Country, Valor), y = Valor, fill = Variable)) +
+  
+  geom_col(show.legend = FALSE) + # Barras sin leyenda (el título lo dice)
+  
+  coord_flip() + # Volteamos el gráfico para leer bien los nombres de países
+  
+  # CRUCIAL: scales = "free_x" permite que cada métrica tenga su propia escala
+  facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
+  
+  scale_fill_viridis_d() + # Colores bonitos
+  theme_minimal() +
+  labs(
+    title = "Comparativa de Promedios por País",
+    subtitle = "Cada panel muestra el ranking de países para esa variable específica",
+    x = "",
+    y = "Valor Promedio"
+  ) +
+  theme(
+    strip.text = element_text(face = "bold", size = 10),
+    axis.text.y = element_text(size = 7) # Texto un poco más pequeño si hay muchos países
+  )
+```
+
+```{r}
+# 1. Seleccionamos solo las columnas numéricas de tu dataset completo
+# (Asegúrate de excluir columnas categóricas como City, Country, Month, etc.)
+datos_numericos <- df_i2 %>% 
+  select(PM2.5, PM10, NO2, SO2, CO, O3, Temperature, Humidity,Wind.Speed) 
+
+# 2. Calculamos la matriz matemática de correlación
+matriz_cor <- cor(datos_numericos, use = "complete.obs")
+
+# 3. Graficamos
+ggcorrplot(matriz_cor, 
+           method = "circle",       # O "square"
+           type = "lower",          # Muestra solo la mitad inferior (para no repetir)
+           lab = TRUE,              # Muestra el número de correlación dentro
+           lab_size = 3,            # Tamaño del número
+           colors = c("#E46726", "white", "#6D9EC1"), # Rojo (Negativo) - Blanco - Azul (Positivo)
+           title = "Matriz de Correlación: Clima y Contaminantes",
+           ggtheme = ggplot2::theme_minimal)
+```
+
+```{r}
+# 1. Obtenemos la lista única de continentes
+continentes <- unique(df_i2$Continent)
+
+# 2. Iniciamos el bucle para generar un gráfico por cada uno
+for(cont in continentes) {
+  
+  # A. Filtramos los datos SOLO para ese continente
+  datos_continente <- df_i %>%
+    filter(Continent == cont) %>%
+    # Seleccionamos solo las numéricas (igual que antes)
+    select(PM2.5, PM10, NO2, SO2, CO, O3, Temperature, Humidity, Wind.Speed)
+  
+  # B. Calculamos la correlación
+  # (Usamos tryCatch por si algún continente tiene pocos datos y falla, que el código siga)
+  try({
+    matriz_cor <- cor(datos_continente, use = "complete.obs")
+    
+    # C. Creamos el Gráfico
+    p <- ggcorrplot(matriz_cor, 
+               method = "circle",
+               type = "lower",
+               lab = TRUE, 
+               lab_size = 3, 
+               colors = c("#E46726", "white", "#6D9EC1"),
+               title = paste("Matriz de Correlación -", cont), # Título dinámico
+               ggtheme = ggplot2::theme_minimal)
+    
+    # D. Imprimimos el gráfico en pantalla
+    print(p)
+    
+  }, silent = TRUE)
+}
+```
+
+```{r}
+# 1. Obtenemos la lista única de continentes
+paises <- unique(df_i2$Country)
+
+# 2. Iniciamos el bucle para generar un gráfico por cada uno
+for(pais in paises) {
+  
+  # A. Filtramos los datos SOLO para ese continente
+  datos_pais <- df_i %>%
+    filter(Country == pais) %>%
+    # Seleccionamos solo las numéricas (igual que antes)
+    select(PM2.5, PM10, NO2, SO2, CO, O3, Temperature, Humidity, Wind.Speed)
+  
+  # B. Calculamos la correlación
+  # (Usamos tryCatch por si algún continente tiene pocos datos y falla, que el código siga)
+  try({
+    matriz_cor <- cor(datos_pais, use = "complete.obs")
+    
+    # C. Creamos el Gráfico
+    p <- ggcorrplot(matriz_cor, 
+               method = "circle",
+               type = "lower",
+               lab = TRUE, 
+               lab_size = 3, 
+               colors = c("#E46726", "white", "#6D9EC1"),
+               title = paste("Matriz de Correlación -", pais), # Título dinámico
+               ggtheme = ggplot2::theme_minimal)
+    
+    # D. Imprimimos el gráfico en pantalla
+    print(p)
+    
+  }, silent = TRUE)
+}
+```
