@@ -407,6 +407,100 @@ Se observa que no existen valores faltantes en la base de datos
 df_long
 ```
 
+### Agrupación de df_long a nivel mensual.
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Aseguramos que Date sea tipo Date
+df_long <- df_long %>%
+  mutate(Date = as.Date(Date)) 
+
+df_mensual <- df_long %>%
+  mutate(YearMonth = format(Date, "%Y-%m")) %>%  # formato Año-Mes como "2023-12"
+  group_by(YearMonth, Country, Continent, Metrica) %>%
+  summarise(
+    promedio = mean(valor, na.rm = TRUE),
+    maximo = max(valor, na.rm = TRUE),
+    minimo = min(valor, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+contaminantes <- c("PM2.5", "PM10", "NO2", "SO2", "CO", "O3")
+
+
+# Obtener lista única de continentes
+continentes <- unique(df_mensual$Continent)
+
+# Bucle por continente
+for (cont in continentes) {
+  df_filtrado <- df_mensual %>% filter(Continent == cont) %>% filter(Metrica == contaminantes)
+  
+  p <- ggplot(df_filtrado, aes(x = YearMonth, y = promedio, color = Metrica, group = Metrica)) +
+    geom_line() +
+    labs(title = paste("Tendencia mensual de métricas en", cont),
+         x = "Año-Mes", y = "Promedio mensual") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  print(p)
+}
+```
+
+Se observa que la información tiene inconsistencias en algunas métricas al momento de hacer el promedio, por ende, vamos a revisar los outliers de los contaminantes
+
+```{r}
+library(dlookr)
+
+df1 %>%
+  diagnose_numeric("PM2.5", "PM10", "NO2", "SO2", "CO", "O3", "Temperature", "Humidity", "Wind.Speed")
+
+```
+
+
+```{r}
+df_long %>%
+  group_by(Metrica,Continent) %>%
+  summarise(
+    min = min(valor, na.rm = TRUE),
+    max = max(valor, na.rm = TRUE),
+    mean = mean(valor, na.rm = TRUE),
+    sd = sd(valor, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+Se observa que la información es "consistente" al menos a nivel Continente, seguiré explorando la información
+
+
+
+
+```{r}
+top_paises <- df_long %>%
+  filter(Metrica == "PM2.5") %>%
+  group_by(Country) %>%
+  summarise(pm25_promedio = mean(valor, na.rm = TRUE)) %>%
+  arrange(desc(pm25_promedio)) %>%
+  slice_head(n = 10)
+
+# Gráfico de barras
+ggplot(top_paises, aes(x = reorder(Country, pm25_promedio), y = pm25_promedio)) +
+  geom_col(fill = "firebrick") +
+  coord_flip() +
+  labs(title = "Top 10 países más contaminados (PM2.5)",
+       x = "País", y = "PM2.5 promedio") +
+  theme_minimal()
+```
 
 
 
@@ -416,9 +510,12 @@ df_long
 
 
 
-
-
-
+Temperature
+<dbl>
+Humidity
+<dbl>
+Wind.Speed
+<dbl>
 
 
 
