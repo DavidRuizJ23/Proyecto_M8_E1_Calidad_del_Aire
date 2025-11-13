@@ -401,13 +401,28 @@ vis_miss(df1)
 
 ```
 
-Se observa que no existen valores faltantes en la base de datos 
+Se observa que no existen valores faltantes en la base de datos. Se procedió a la revisión de datos atípicos.
+
+```{r}
+library(dlookr)
+
+df1 %>%
+  diagnose_numeric("PM2.5", "PM10", "NO2", "SO2", "CO", "O3", "Temperature", "Humidity", "Wind.Speed")
+
+```
+
+La temperatura tiene zeros y negativos, pero es lógico por algunos países como EU, Canadá o Europa que tienen climas extremadamente frios., lo cual no representa tema. de la misma forma los demás valores se notan correctos al menos a nivel macro.
 
 ```{r}
 df_long
 ```
 
-### Agrupación de df_long a nivel mensual.
+### Agrupación de df_long a nivel mensual por Continente, País y por Ciudad
+
+Se agrupo la información en tres conjuntos
+ - Mensual Continental
+ - Mensual por País
+ - Mensual por Ciudad.
 
 ```{r}
 
@@ -415,13 +430,33 @@ library(dplyr)
 library(ggplot2)
 library(lubridate)
 
-# Aseguramos que Date sea tipo Date
+# Transformación de la columna Fecha en formato tipo Date
 df_long <- df_long %>%
   mutate(Date = as.Date(Date)) 
 
-df_mensual <- df_long %>%
+df_mensual_Country <- df_long %>%
   mutate(YearMonth = format(Date, "%Y-%m")) %>%  # formato Año-Mes como "2023-12"
   group_by(YearMonth, Country, Continent, Metrica) %>%
+  summarise(
+    promedio = mean(valor, na.rm = TRUE),
+    maximo = max(valor, na.rm = TRUE),
+    minimo = min(valor, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_mensual_City <- df_long %>%
+  mutate(YearMonth = format(Date, "%Y-%m")) %>%  # formato Año-Mes como "2023-12"
+  group_by(YearMonth, City, Country, Continent, Metrica) %>%
+  summarise(
+    promedio = mean(valor, na.rm = TRUE),
+    maximo = max(valor, na.rm = TRUE),
+    minimo = min(valor, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_mensual_continental <- df_long %>%
+  mutate(YearMonth = format(Date, "%Y-%m")) %>%  # formato Año-Mes como "2023-12"
+  group_by(YearMonth, Continent, Metrica) %>%
   summarise(
     promedio = mean(valor, na.rm = TRUE),
     maximo = max(valor, na.rm = TRUE),
@@ -437,35 +472,40 @@ library(dplyr)
 library(ggplot2)
 
 contaminantes <- c("PM2.5", "PM10", "NO2", "SO2", "CO", "O3")
-
+colores_metricas <- c(
+  "PM2.5" = "#1f77b4",
+  "PM10" = "#2ca02c",
+  "NO2" = "#ff7f0e",
+  "SO2" = "#9467bd",
+  "CO" = "#8c564b",
+  "O3" = "#e377c2",
+  "Temperature" = "#d62728",
+  "Humidity" = "#17becf",
+  "Wind.Speed" = "#7f7f7f"
+)
 
 # Obtener lista única de continentes
-continentes <- unique(df_mensual$Continent)
+continentes <- unique(df_mensual_continental$Continent)
 
 # Bucle por continente
 for (cont in continentes) {
-  df_filtrado <- df_mensual %>% filter(Continent == cont) %>% filter(Metrica == contaminantes)
+  df_filtrado <- df_mensual_continental %>% filter(Continent == cont) 
   
   p <- ggplot(df_filtrado, aes(x = YearMonth, y = promedio, color = Metrica, group = Metrica)) +
     geom_line() +
+    scale_color_manual(values = colores_metricas) + 
     labs(title = paste("Tendencia mensual de métricas en", cont),
          x = "Año-Mes", y = "Promedio mensual") +
-    theme_minimal() +
+    theme_light() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
   
   print(p)
 }
 ```
 
-Se observa que la información tiene inconsistencias en algunas métricas al momento de hacer el promedio, por ende, vamos a revisar los outliers de los contaminantes
+Se observa que los continentes como South América y Oceanía son los peores por tener altos índices de 
 
-```{r}
-library(dlookr)
 
-df1 %>%
-  diagnose_numeric("PM2.5", "PM10", "NO2", "SO2", "CO", "O3", "Temperature", "Humidity", "Wind.Speed")
-
-```
 
 
 ```{r}
@@ -480,7 +520,8 @@ df_long %>%
   )
 ```
 
-Se observa que la información es "consistente" al menos a nivel Continente, seguiré explorando la información
+Se observa que la información es "consistente" al menos a nivel Continente, seguiré explorando la información por Ciudad
+
 
 
 
@@ -504,18 +545,6 @@ ggplot(top_paises, aes(x = reorder(Country, pm25_promedio), y = pm25_promedio)) 
 
 
 
-
-
-
-
-
-
-Temperature
-<dbl>
-Humidity
-<dbl>
-Wind.Speed
-<dbl>
 
 
 
