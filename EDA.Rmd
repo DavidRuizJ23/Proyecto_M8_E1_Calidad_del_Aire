@@ -12,7 +12,7 @@ source('R-libraries-ICdD_p2.r')
 
 ```{r Carga_Info, message=FALSE, warning=FALSE}
 df= read_csv("global_air_quality_data_10000.csv") %>% data.frame()
-head(df)
+head(df,10)
 ```
 
 ```{r Dimension_DataSet}
@@ -325,6 +325,8 @@ ggpairs(
 
 
 ```{r}
+options(dlookr_offline = FALSE)
+
 df1 %>% dplyr::group_by(Hemisphere) %>% dlookr::correlate() %>% plot()
 ```
 
@@ -385,9 +387,25 @@ df_long %>%
   )
 ```
 
+## Limpieza de datos:
 
+```{r}
+library(dplyr)
+library(naniar)
 
+# Ver resumen de NA por variable
+df1 %>% summarise_all(~sum(is.na(.)))
 
+# Visualizar con naniar
+vis_miss(df1)
+
+```
+
+Se observa que no existen valores faltantes en la base de datos 
+
+```{r}
+df_long
+```
 
 
 
