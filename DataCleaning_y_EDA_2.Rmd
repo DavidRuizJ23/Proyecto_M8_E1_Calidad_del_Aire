@@ -1422,3 +1422,8 @@ for(pais in paises) {
   }, silent = TRUE)
 }
 ```
+
+```{r}
+save(df, file = "df.RData")
+```
+

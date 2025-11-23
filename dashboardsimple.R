@@ -21,6 +21,8 @@ SHOW_MA3 <- FALSE      # <- media móvil
 SHOW_MED <- TRUE       # <- mediana si te gusta
 
 # ---------- Datos ----------
+
+load("df.RData")
 df <- df %>%
   mutate(
     Date = as.Date(Date),
