@@ -1,18 +1,32 @@
+# ===============================
+# Dashboard – Calidad del Aire Global
+# ===============================
+
 library(shiny)
+library(bslib)
 library(plotly)
 library(dplyr)
 library(lubridate)
+library(readr)
+library(shinycssloaders)
+library(scales)
+library(tibble)
+library(DT)     # <-- para la tabla tipo DataTable
 
-# ======================
-#   PREPARAR LOS DATOS
-# ======================
+# ---------- Estilos ----------
+col_line <- "#2E86DE"  # azul principal
+col_ma   <- "#00B894"  # verde media móvil
+col_ref  <- "#B2BABB"  # gris mediana
+SHOW_MA3 <- FALSE      # <- media móvil
+SHOW_MED <- TRUE       # <- mediana si te gusta
 
-
+# ---------- Datos ----------
 df <- df %>%
   mutate(
     Date = as.Date(Date),
     year_month = floor_date(Date, "month")
   )
+
 
 data_monthly <- df %>%
   group_by(Country, City, year_month) %>%
@@ -27,93 +41,337 @@ data_monthly <- df %>%
     hum  = mean(Humidity, na.rm = TRUE),
     wind = mean(Wind.Speed, na.rm = TRUE),
     .groups = "drop"
+  ) %>%
+  arrange(Country, City, year_month)
+
+# Agregado por país (para la comparación entre países)
+country_monthly <- data_monthly %>%
+  group_by(Country, year_month) %>%
+  summarise(
+    pm25 = mean(pm25, na.rm = TRUE),
+    pm10 = mean(pm10, na.rm = TRUE),
+    no2  = mean(no2,  na.rm = TRUE),
+    so2  = mean(so2,  na.rm = TRUE),
+    co   = mean(co,   na.rm = TRUE),
+    o3   = mean(o3,   na.rm = TRUE),
+    temp = mean(temp, na.rm = TRUE),
+    hum  = mean(hum,  na.rm = TRUE),
+    wind = mean(wind, na.rm = TRUE),
+    .groups = "drop"
   )
 
-
-# ======================
-#         UI
-# ======================
-
-ui <- fluidPage(
-  titlePanel("Dashboard – Calidad del Aire Global"),
-  
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("country", "País:", 
-                  choices = sort(unique(df$Country))),
-      
-      uiOutput("city_selector"),
-      
-      selectInput("pollutant", "Contaminante:",
-                  choices = c("PM2.5" = "pm25",
-                              "PM10" = "pm10",
-                              "NO2"  = "no2",
-                              "SO2"  = "so2",
-                              "CO"   = "co",
-                              "O3"   = "o3"))
-    ),
-    
-    mainPanel(
-      tabsetPanel(
-        tabPanel("Tendencias", plotlyOutput("time_plot")),
-        tabPanel("Correlación", plotlyOutput("corr_plot"))
-      )
-    )
-  )
+pollutant_labels <- c(
+  pm25="PM2.5", pm10="PM10", no2="NO2", so2="SO2", co="CO", o3="O3",
+  temp="Temperatura", hum="Humedad", wind="Velocidad del viento"
 )
 
+env_choices <- c(
+  "Temperatura"          = "temp",
+  "Humedad"              = "hum",
+  "Velocidad del viento" = "wind"
+)
 
-# ======================
-#      SERVER
-# ======================
+# ---------- UI ----------
+theme <- bs_theme(bootswatch = "flatly", base_font = font_google("Inter"))
 
+ui <- page_sidebar(
+  theme = theme,
+  sidebar = sidebar(
+    width = 320,
+    selectInput("country", "País:",
+                choices = sort(unique(df$Country)),
+                selected = sort(unique(df$Country))[1]),
+    uiOutput("city_selector"),
+    selectInput("pollutant", "Contaminante:",
+                choices = c("PM2.5"="pm25","PM10"="pm10","NO2"="no2",
+                            "SO2"="so2","CO"="co","O3"="o3"),
+                selected = "pm25"),
+    selectInput("env_var", "Variable ambiental:",
+                choices = env_choices,
+                selected = "temp"),
+    hr(),
+    selectInput("country_compare", "Países a comparar:",
+                choices = sort(unique(df$Country)),
+                selected = c("Mexico", "United States"),
+                multiple = TRUE),
+    hr(),
+    downloadButton("dl_data", "Descargar datos filtrados")
+  ),
+  
+  # ---------- Encabezado personalizado ----------
+  tags$head(
+    tags$style(HTML("
+      .custom-title {
+        text-align: center;
+        font-size: 34px;
+        font-weight: 800;
+        margin-top: 5px;
+        margin-bottom: 25px;
+        color: #2C3E50;
+      }
+    "))
+  ),
+  div(class = "custom-title", "Dashboard – Calidad del Aire Global"),
+  
+  # ---------- KPIs ----------
+  layout_columns(
+    col_widths = c(4,4,4),
+    card(
+      class = "mb-3",
+      card_header("Valor actual"),
+      card_body(
+        div(class = "fs-3 fw-bold", textOutput("kpi_current")),
+        div(class = "text-muted", textOutput("kpi_context"))
+      )
+    ),
+    card(
+      class = "mb-3",
+      card_header("Cambio vs mes previo"),
+      card_body(div(class = "fs-3 fw-bold", textOutput("kpi_delta")))
+    ),
+    card(
+      class = "mb-3",
+      card_header("Máximo histórico"),
+      card_body(div(class = "fs-3 fw-bold", textOutput("kpi_max")))
+    )
+  ),
+  
+  # ---------- Panel de gráficos + tabla ----------
+  card(
+    card_header(
+      navset_pill(
+        nav("Tendencias", withSpinner(plotlyOutput("time_plot", height = 420))),
+        nav("Contaminación vs Ambiente",
+            withSpinner(plotlyOutput("corr_city_plot", height = 480))),
+        nav("Comparación países",
+            withSpinner(plotlyOutput("country_compare_plot", height = 480))),
+        nav("Tabla de datos",
+            withSpinner(DTOutput("table_city")))   # <-- nueva pestaña
+      )
+    )
+  ),
+  
+  footer = div(class="small text-muted mt-3",
+               "Fuente: global_air_quality_data_10000.csv (demo).")
+)
+
+# ---------- SERVER ----------
 server <- function(input, output, session){
   
-  # selector dinámico de ciudades
+  # selector dinámico de ciudad
   output$city_selector <- renderUI({
-    cities <- df %>% 
-      filter(Country == input$country) %>%
-      pull(City) %>% unique()
-    
-    selectInput("city", "Ciudad:", choices = cities)
+    req(input$country)
+    cities <- df %>% filter(Country == input$country) %>%
+      pull(City) %>% unique() %>% sort()
+    selectInput("city", "Ciudad:", choices = cities,
+                selected = if (length(cities)) cities[1] else NULL)
   })
   
-  # datos filtrados 
+  # datos filtrados por país / ciudad
   filtered <- reactive({
+    req(input$country, input$city)
     data_monthly %>%
-      filter(Country == input$country,
-             City == input$city)
+      filter(Country == input$country, City == input$city) %>%
+      arrange(year_month)
   })
   
-  # gráfico temporal
+  # ---------- KPIs ----------
+  output$kpi_current <- renderText({
+    d <- filtered(); req(nrow(d) > 0)
+    y <- d[[input$pollutant]]
+    v <- y[length(y)]
+    if (is.finite(v)) number(v, accuracy = 0.1) else "s/d"
+  })
+  
+  output$kpi_context <- renderText({
+    paste(input$city, "-", input$country)
+  })
+  
+  output$kpi_delta <- renderText({
+    d <- filtered(); req(nrow(d) >= 2)
+    y <- d[[input$pollutant]]
+    cur <- y[length(y)]; prev <- y[length(y)-1]
+    if (is.finite(cur) && is.finite(prev) && prev != 0) {
+      pct <- (cur - prev) / prev
+      paste0(ifelse(pct >= 0, "+", ""), percent(pct, accuracy = 0.1))
+    } else "s/d"
+  })
+  
+  output$kpi_max <- renderText({
+    d <- filtered(); req(nrow(d) > 0)
+    mx <- suppressWarnings(max(d[[input$pollutant]], na.rm = TRUE))
+    if (is.finite(mx)) number(mx, accuracy = 0.1) else "s/d"
+  })
+  
+  # ---------- Tendencia ----------
   output$time_plot <- renderPlotly({
-    req(nrow(filtered()) > 0)
+    d <- filtered(); req(nrow(d) > 0)
+    ycol <- input$pollutant; ylab <- pollutant_labels[[ycol]]
+    d <- d %>% filter(!is.na(.data[[ycol]]))
+    yv <- d[[ycol]]
     
-    plot_ly(
-      data = filtered(),
-      x = ~year_month,
-      y = ~get(input$pollutant),
-      type = "scatter",
-      mode = "lines+markers"
-    ) %>%
-      layout(title = paste("Evolución de", input$pollutant))
+    last_x <- tail(d$year_month, 1); last_y <- tail(yv, 1)
+    
+    plt <- plot_ly() %>%
+      add_trace(data = d, x = ~year_month, y = ~yv,
+                type = "scatter", mode = "lines+markers",
+                name = ylab,
+                line = list(width = 3, color = col_line),
+                marker = list(size = 6, symbol = "circle-open"),
+                hovertemplate = paste0("%{x|%b %Y}<br>", ylab, ": %{y:.2f}<extra></extra>")
+      )
+    
+    if (SHOW_MED) {
+      med_y <- suppressWarnings(median(yv, na.rm = TRUE))
+      plt <- plt %>%
+        add_trace(data = data.frame(x = range(d$year_month), y = med_y),
+                  x = ~x, y = ~y, type = "scatter", mode = "lines",
+                  name = "Mediana",
+                  line = list(color = col_ref, dash = "dash", width = 2),
+                  hoverinfo = "skip")
+    }
+    
+    plt %>%
+      add_annotations(x = last_x, y = last_y,
+                      text = paste0(number(last_y, accuracy = 0.1)),
+                      showarrow = TRUE, arrowhead = 2, ax = 20, ay = -25,
+                      bgcolor = "rgba(255,255,255,0.85)", bordercolor = col_line) %>%
+      layout(
+        template = "plotly_white",
+        title = list(text = paste("Evolución de", ylab, "—", input$city, ",", input$country),
+                     x = 0.02),
+        xaxis = list(
+          title = "Mes",
+          rangeselector = list(
+            buttons = list(
+              list(count = 6, label = "6m", step = "month", stepmode = "backward"),
+              list(count = 1, label = "1a", step = "year", stepmode = "backward"),
+              list(step = "all", label = "Todo")
+            ))),
+        yaxis = list(title = ylab, zeroline = TRUE, zerolinewidth = 1),
+        legend = list(orientation = "h", x = 0.5, xanchor = "center", y = 1.1),
+        margin = list(l = 60, r = 20, b = 60, t = 60),
+        hoverlabel = list(bgcolor = "white")
+      )
   })
   
-  # correlación con temperatura
-  output$corr_plot <- renderPlotly({
-    req(nrow(filtered()) > 0)
+  # ---------- Pestaña 1: Contaminación vs Ambiente ----------
+  output$corr_city_plot <- renderPlotly({
+    d <- filtered(); req(nrow(d) > 0)
+    ycol <- input$pollutant; ylab <- pollutant_labels[[ycol]]
+    xcol <- input$env_var;  xlab <- pollutant_labels[[xcol]]
     
-    plot_ly(
-      filtered(),
-      x = ~temp,
-      y = ~get(input$pollutant),
-      type = "scatter",
-      mode = "markers"
-    ) %>%
-      layout(title = paste(input$pollutant, "vs Temperatura"))
+    d <- d %>% filter(!is.na(.data[[xcol]]), !is.na(.data[[ycol]]))
+    req(nrow(d) > 1)
+    
+    df_fit <- tibble(x = d[[xcol]], y = d[[ycol]])
+    fit <- lm(y ~ x, data = df_fit)
+    r_val  <- suppressWarnings(cor(df_fit$x, df_fit$y, use = "complete.obs"))
+    r2_val <- summary(fit)$r.squared
+    
+    xr   <- seq(min(df_fit$x, na.rm = TRUE), max(df_fit$x, na.rm = TRUE), length.out = 100)
+    pred <- predict(fit, newdata = data.frame(x = xr))
+    
+    plot_ly() %>%
+      add_trace(data = df_fit, x = ~x, y = ~y,
+                type = "scatter", mode = "markers",
+                name = "Observaciones",
+                marker = list(size = 8, opacity = 0.75,
+                              line = list(width = 0.5, color = "#666")),
+                hovertemplate = paste0(xlab, ": %{x:.2f}<br>",
+                                       ylab, ": %{y:.2f}<extra></extra>")
+      ) %>%
+      add_trace(x = xr, y = pred,
+                type = "scatter", mode = "lines",
+                name = "Ajuste lineal",
+                line = list(color = col_line, width = 3)
+      ) %>%
+      layout(
+        template = "plotly_white",
+        title = paste0(ylab, " vs ", xlab, " — ", input$city, ", ", input$country,
+                       if (is.finite(r_val)) paste0(" | r = ", round(r_val, 2)) else "",
+                       if (is.finite(r2_val)) paste0(" • R² = ", round(r2_val, 2)) else ""),
+        xaxis = list(title = xlab),
+        yaxis = list(title = ylab, zeroline = TRUE, zerolinewidth = 1),
+        legend = list(orientation = "h", x = 0.5, xanchor = "center", y = 1.1),
+        margin = list(l = 60, r = 20, b = 60, t = 60),
+        hoverlabel = list(bgcolor = "white")
+      )
   })
   
+  # ---------- Pestaña 2: Comparación de métricas por país ----------
+  output$country_compare_plot <- renderPlotly({
+    req(length(input$country_compare) > 0)
+    ycol <- input$pollutant; ylab <- pollutant_labels[[ycol]]
+    
+    d <- country_monthly %>%
+      filter(Country %in% input$country_compare) %>%
+      filter(!is.na(.data[[ycol]]))
+    req(nrow(d) > 0)
+    
+    plot_ly(
+      data = d,
+      x    = ~year_month,
+      y    = d[[ycol]],
+      color = ~Country,
+      type  = "scatter",
+      mode  = "lines+markers",
+      hovertemplate = paste0("%{x|%b %Y}<br>",
+                             ylab, ": %{y:.2f}<br>",
+                             "País: %{trace.name}<extra></extra>")
+    ) %>%
+      layout(
+        template = "plotly_white",
+        title = paste0(ylab, " por país (comparación)"),
+        xaxis = list(title = "Mes"),
+        yaxis = list(title = ylab, zeroline = TRUE, zerolinewidth = 1),
+        legend = list(orientation = "h", x = 0.5, xanchor = "center", y = 1.1),
+        margin = list(l = 60, r = 20, b = 60, t = 60),
+        hoverlabel = list(bgcolor = "white")
+      )
+  })
+  
+  # ---------- Pestaña 3: Tabla de datos ----------
+  output$table_city <- renderDT({
+    d <- filtered(); req(nrow(d) > 0)
+    
+    tabla <- d %>%
+      select(year_month, pm25, pm10, no2, so2, co, o3, temp, hum, wind) %>%
+      mutate(year_month = format(year_month, "%Y-%m")) %>%
+      rename(
+        Mes        = year_month,
+        PM2.5  = pm25,
+        PM10     = pm10,
+        NO2        = no2,
+        SO2        = so2,
+        CO         = co,
+        O3         = o3,
+        Temp       = temp,
+        Humedad = hum,
+        Viento  = wind
+      )
+    
+    datatable(
+      tabla,
+      rownames = FALSE,
+      filter   = "top",
+      options  = list(
+        pageLength = 10,
+        autoWidth  = TRUE
+      )
+    )
+  })
+  
+  # ---------- Descarga ----------
+  output$dl_data <- downloadHandler(
+    filename = function() {
+      paste0("air_quality_", input$country, "_", input$city, ".csv")
+    },
+    content = function(file) {
+      write_csv(filtered(), file)
+    }
+  )
 }
 
-# correr app
+# ---------- Ejecutar App ----------
 shinyApp(ui, server)
