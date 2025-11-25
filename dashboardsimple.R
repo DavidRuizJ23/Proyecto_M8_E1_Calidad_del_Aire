@@ -46,11 +46,7 @@ df <- df %>%
 data_monthly <- df %>%
   group_by(Country, City, year_month) %>%
   summarise(
-<<<<<<< HEAD
     pm25 = mean(PM2.5, na.rm = TRUE),
-=======
-    pm25 = mean(⁠ PM2.5 ⁠, na.rm = TRUE),
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
     pm10 = mean(PM10,     na.rm = TRUE),
     no2  = mean(NO2,      na.rm = TRUE),
     so2  = mean(SO2,      na.rm = TRUE),
@@ -79,6 +75,19 @@ country_monthly <- data_monthly %>%
     .groups = "drop"
   )
 
+country_monthly <- country_monthly %>%
+  mutate(Country = trimws(Country),
+         Country = stringr::str_squish(Country))
+# recodificación simple
+country_monthly <- country_monthly %>%
+  mutate(Country = case_when(
+    Country %in% c("USA","U.S.A","US") ~ "United States of America",
+    Country %in% c("UK","U.K.") ~ "United Kingdom",
+    Country %in% c("UAE") ~ "United Arab Emirates",
+    TRUE ~ Country
+  ))
+
+
 pollutant_labels <- c(
   pm25="PM2.5", pm10="PM10", no2="NO2", so2="SO2", co="CO", o3="O3",
   temp="Temperatura", hum="Humedad", wind="Velocidad del viento"
@@ -95,7 +104,6 @@ country_yearly <- data_monthly %>%
   mutate(year = lubridate::year(year_month)) %>%
   group_by(Country, year) %>%
   summarise(across(pm25:wind, ~ mean(.x, na.rm = TRUE)), .groups = "drop")
-<<<<<<< HEAD
 
 country_avg_all <- country_yearly %>%
   group_by(Country) %>%
@@ -108,12 +116,7 @@ country_avg_all <- country_avg_all %>%
     Country == "UAE" ~ "United Arab Emirates",
     TRUE ~ Country
   ))
-=======
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
 
-country_avg_all <- country_yearly %>%
-  group_by(Country) %>%
-  summarise(across(pm25:wind, ~ mean(.x, na.rm = TRUE)), .groups = "drop")
 
 world <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
 
@@ -126,6 +129,16 @@ centroids <- st_centroid(world) %>%
   ) %>%
   st_drop_geometry()
 
+
+country_avg_all <- country_avg_all %>%
+  mutate(Country = case_when(
+    Country == "USA" ~ "United States of America",
+    Country == "UK"  ~ "United Kingdom",
+    Country == "UAE" ~ "United Arab Emirates",
+    TRUE ~ Country
+  ))
+
+
 map_data <- country_avg_all %>%
   left_join(centroids, by = c("Country" = "admin")) %>%
   mutate(
@@ -137,10 +150,6 @@ map_data <- country_avg_all %>%
       "Viento: ", round(wind,1), " m/s"
     )
   )
-<<<<<<< HEAD
-=======
-
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
 # ---------- UI ----------
 ui <- page_sidebar(
   theme = bs_theme(version = 5, bootswatch = "minty"),
@@ -168,14 +177,9 @@ ui <- page_sidebar(
                 selected = c("Mexico", "United States"),
                 multiple = TRUE),
     textOutput("compare_status"),
-<<<<<<< HEAD
-
+    
     downloadButton("dl_data", "Descargar datos filtrados")
-
-=======
-    hr(),
-    downloadButton("dl_data", "Descargar datos filtrados")
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
+    
   ),
   
   # ---------- Encabezado personalizado con icono (sin negritas) ----------
@@ -239,7 +243,7 @@ ui <- page_sidebar(
         nav("Mapa", withSpinner(leafletOutput("map_countries", height = 600))),
         nav("Tabla de datos",
             withSpinner(DTOutput("table_city"))),
-        nav("Insights",
+        nav("Insights y conclusiones",
             withSpinner(
               card(
                 class = "p-4",
@@ -260,8 +264,7 @@ ui <- page_sidebar(
 
 # ---------- SERVER ----------
 server <- function(input, output, session){
-<<<<<<< HEAD
-
+  
   all_countries <- sort(unique(df$Country))
   
   observeEvent(input$country, {
@@ -275,10 +278,7 @@ server <- function(input, output, session){
                       selected = new_sel)
   })
   
-
-=======
   
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
   # selector dinámico de ciudad
   output$city_selector <- renderUI({
     req(input$country)
@@ -291,10 +291,10 @@ server <- function(input, output, session){
   # datos filtrados por país / ciudad
   filtered <- reactive({
     req(input$country, input$city)
-    data_monthly %>%
+    dr <- input$date_range
+    d <- data_monthly %>%
       filter(Country == input$country, City == input$city) %>%
       arrange(year_month)
-<<<<<<< HEAD
     
     if (!is.null(dr) && length(dr) == 2) {
       start_d <- floor_date(as.Date(dr[1]), "month")
@@ -302,10 +302,8 @@ server <- function(input, output, session){
       d <- d %>% filter(year_month >= start_d, year_month <= end_d)
     }
     d
-=======
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
   })
-
+  
   # reactive para mapa según rango de fechas
   map_data_range <- reactive({
     # partimos de country_monthly (ya calculado en global)
@@ -332,20 +330,6 @@ server <- function(input, output, session){
       ))
   })
   
-  # ---------- Mensaje dinámico países a comparar ----------
-  output$compare_status <- renderText({
-    req(input$country_compare)
-    paste("Comparando:", paste(input$country_compare, collapse = ", "))
-  })
-  
-  # Cambiar automáticamente a pestaña "Comparación países"
-  observeEvent(input$country_compare, {
-    updateTabsetPanel(
-      session,
-      inputId = "main_tabs",
-      selected = "Comparación países"
-    )
-  })
   
   # ---------- Mensaje dinámico países a comparar ----------
   output$compare_status <- renderText({
@@ -398,11 +382,7 @@ server <- function(input, output, session){
   
   # ---------- Mapa ----------
   output$map_countries <- renderLeaflet({
-<<<<<<< HEAD
     md <- map_data_range() %>% filter(!is.na(lat) & !is.na(lon))
-=======
-    md <- map_data %>% filter(!is.na(lat) & !is.na(lon))
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
     req(nrow(md) > 0)
     
     pal <- colorNumeric("YlOrRd", domain = md$pm25, na.color = "gray")
@@ -411,27 +391,15 @@ server <- function(input, output, session){
       addTiles() %>%
       addCircleMarkers(
         ~lon, ~lat,
-<<<<<<< HEAD
         radius = ~scales::rescale(pm25, to = c(4, 18), from = range(md$pm25, na.rm = TRUE)),
-=======
-        radius = ~scales::rescale(pm25, to = c(4, 18),
-                                  from = range(md$pm25, na.rm = TRUE)),
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
         color = ~pal(pm25),
         stroke = TRUE, weight = 1,
         fillOpacity = 0.85,
         popup = ~popup,
         label = ~paste0(Country, ": ", round(pm25,1), " µg/m³")
       ) %>%
-<<<<<<< HEAD
       addLegend("bottomright", pal = pal, values = ~pm25, title = "PM2.5 (promedio)")
   })
-=======
-      addLegend("bottomright", pal = pal, values = ~pm25,
-                title = "PM2.5 (promedio)")
-  })
-  
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
   # ---------- Tendencia ----------
   output$time_plot <- renderPlotly({
     d <- filtered(); req(nrow(d) > 0)
@@ -579,7 +547,6 @@ server <- function(input, output, session){
       mutate(Mes = format(year_month, "%Y-%m")) %>%
       select(Mes, pm25, pm10, no2, so2, co, o3, temp, hum, wind) %>%
       rename(
-<<<<<<< HEAD
         PM2.5   = pm25,
         PM10    = pm10,
         NO2     = no2,
@@ -589,17 +556,6 @@ server <- function(input, output, session){
         Temp    = temp,
         Humedad = hum,
         Viento  = wind
-=======
-        ⁠ PM2.5 ⁠   = pm25,
-        ⁠ PM10 ⁠    = pm10,
-        ⁠ NO2 ⁠     = no2,
-        ⁠ SO2 ⁠     = so2,
-        ⁠ CO ⁠      = co,
-        ⁠ O3 ⁠      = o3,
-        ⁠ Temp ⁠    = temp,
-        ⁠ Humedad ⁠ = hum,
-        ⁠ Viento ⁠  = wind
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
       )
     
     dt <- datatable(
@@ -611,10 +567,6 @@ server <- function(input, output, session){
         autoWidth  = TRUE
       )
     )
-<<<<<<< HEAD
-=======
-    
->>>>>>> fd9adf001a69b3988ba6a9314d85c1cd40e86bd2
     dt %>% formatRound(
       columns = c("PM2.5","PM10","NO2","SO2","CO","O3","Temp","Humedad","Viento"),
       digits = 2
