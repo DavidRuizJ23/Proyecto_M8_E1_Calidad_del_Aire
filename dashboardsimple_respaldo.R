@@ -243,7 +243,7 @@ ui <- page_sidebar(
         nav("Mapa", withSpinner(leafletOutput("map_countries", height = 600))),
         nav("Tabla de datos",
             withSpinner(DTOutput("table_city"))),
-        nav("Insights",
+        nav("Insights y conclusiones",
             withSpinner(
               card(
                 class = "p-4",
