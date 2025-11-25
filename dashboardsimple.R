@@ -223,7 +223,22 @@ ui <- page_sidebar(
 
 # ---------- SERVER ----------
 server <- function(input, output, session){
+###################################################################### CAMBIOS#########################
+  # server.R
+  all_countries <- sort(unique(df$Country))
   
+  observeEvent(input$country, {
+    # construir nueva selección: país principal + los previamente seleccionados sin duplicados
+    prev <- isolate(input$country_compare)
+    new_sel <- unique(c(input$country, prev))
+    # limitar tamaño si quieres (ej: máximo 6)
+    new_sel <- head(new_sel, 6)
+    updateSelectInput(session, "country_compare",
+                      choices = all_countries,
+                      selected = new_sel)
+  })
+  
+#################################################################FIN DE CAMBIOS"##################################
   # selector dinámico de ciudad
   output$city_selector <- renderUI({
     req(input$country)
