@@ -75,6 +75,19 @@ country_monthly <- data_monthly %>%
     .groups = "drop"
   )
 
+country_monthly <- country_monthly %>%
+  mutate(Country = trimws(Country),
+         Country = stringr::str_squish(Country))
+# recodificación simple
+country_monthly <- country_monthly %>%
+  mutate(Country = case_when(
+    Country %in% c("USA","U.S.A","US") ~ "United States of America",
+    Country %in% c("UK","U.K.") ~ "United Kingdom",
+    Country %in% c("UAE") ~ "United Arab Emirates",
+    TRUE ~ Country
+  ))
+
+
 pollutant_labels <- c(
   pm25="PM2.5", pm10="PM10", no2="NO2", so2="SO2", co="CO", o3="O3",
   temp="Temperatura", hum="Humedad", wind="Velocidad del viento"
@@ -115,6 +128,16 @@ centroids <- st_centroid(world) %>%
     lat = st_coordinates(geometry)[,2]
   ) %>%
   st_drop_geometry()
+
+
+country_avg_all <- country_avg_all %>%
+  mutate(Country = case_when(
+    Country == "USA" ~ "United States of America",
+    Country == "UK"  ~ "United Kingdom",
+    Country == "UAE" ~ "United Arab Emirates",
+    TRUE ~ Country
+  ))
+
 
 map_data <- country_avg_all %>%
   left_join(centroids, by = c("Country" = "admin")) %>%
