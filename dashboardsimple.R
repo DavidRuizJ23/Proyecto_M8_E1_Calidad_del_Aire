@@ -76,6 +76,16 @@ centroids <- st_centroid(world) %>%
          lat = st_coordinates(geometry)[,2]) %>%
   st_drop_geometry()
 
+################ RECODIFICACIÓN DE NOMBRES QUE NO MACHEAN  #####################
+country_avg_all <- country_avg_all %>%
+  mutate(Country = case_when(
+    Country == "USA" ~ "United States of America",
+    Country == "UK"  ~ "United Kingdom",
+    Country == "UAE" ~ "United Arab Emirates",
+    TRUE ~ Country
+  ))
+
+
 # 3) Unir con tus promedios (ajusta columna de unión)
 map_data <- country_avg_all %>%
   left_join(centroids, by = c("Country" = "admin"))
@@ -159,22 +169,54 @@ ui <- page_sidebar(
                 selected = c("Mexico", "United States"),
                 multiple = TRUE),
     hr(),
-    downloadButton("dl_data", "Descargar datos filtrados")
+    downloadButton("dl_data", "Descargar datos filtrados"),
+    dateRangeInput("date_range", "Rango de fechas:",
+                   start = min(df$Date, na.rm = TRUE),
+                   end   = max(df$Date, na.rm = TRUE),
+                   format = "yyyy-mm",
+                   startview = "month")
+    
   ),
   
   # ---------- Encabezado personalizado ----------
   tags$head(
     tags$style(HTML("
-      .custom-title {
-        text-align: center;
-        font-size: 34px;
-        font-weight: 800;
-        margin-top: 5px;
-        margin-bottom: 25px;
-        color: #2C3E50;
-      }
-    "))
+    /* título personalizado */
+    .custom-title {
+      text-align: center;
+      font-size: 34px;
+      font-weight: 800;
+      margin-top: 5px;
+      margin-bottom: 25px;
+      color: #2C3E50;
+    }
+
+    /* value box styles */
+    .value-box {
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+    }
+    .value-box .vb-icon {
+      font-size: 20px;
+      width: 36px;
+      height: 36px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius: 6px;
+    }
+    .value-box.vb-good { background: linear-gradient(90deg, #e6f7ee, #dff3ea); color: #0b6b3a; }
+    .value-box.vb-neutral { background: linear-gradient(90deg, #fff9e6, #fff4d9); color: #7a5a00; }
+    .value-box.vb-bad { background: linear-gradient(90deg, #fdecea, #fbe6e6); color: #8b1c1c; }
+    .value-box .vb-value { font-weight: 700; font-size: 1.4rem; }
+    .value-box .vb-label { font-size: 0.85rem; color: rgba(0,0,0,0.6); }
+  "))
   ),
+  
   div(class = "custom-title", "Dashboard – Calidad del Aire Global"),
   
   # ---------- KPIs ----------
@@ -191,7 +233,7 @@ ui <- page_sidebar(
     card(
       class = "mb-3",
       card_header("Cambio vs mes previo"),
-      card_body(div(class = "fs-3 fw-bold", textOutput("kpi_delta")))
+      card_body(uiOutput("kpi_delta"))
     ),
     card(
       class = "mb-3",
@@ -238,7 +280,7 @@ server <- function(input, output, session){
                       selected = new_sel)
   })
   
-#################################################################FIN DE CAMBIOS"##################################
+#################################################################FIN DE CAMBIOS##################################
   # selector dinámico de ciudad
   output$city_selector <- renderUI({
     req(input$country)
@@ -248,13 +290,23 @@ server <- function(input, output, session){
                 selected = if (length(cities)) cities[1] else NULL)
   })
   
-  # datos filtrados por país / ciudad
+  # datos filtrados por país / ciudad con rango de fechas
   filtered <- reactive({
     req(input$country, input$city)
-    data_monthly %>%
+    dr <- input$date_range
+    d <- data_monthly %>%
       filter(Country == input$country, City == input$city) %>%
       arrange(year_month)
+    
+    if (!is.null(dr) && length(dr) == 2) {
+      start_d <- as.Date(dr[1])
+      end_d   <- as.Date(dr[2])
+      d <- d %>% filter(year_month >= floor_date(start_d, "month"),
+                        year_month <= floor_date(end_d, "month"))
+    }
+    d
   })
+  
   
   # ---------- KPIs ----------
   output$kpi_current <- renderText({
@@ -276,15 +328,44 @@ server <- function(input, output, session){
     paste(input$city, "-", input$country)
   })
   
-  output$kpi_delta <- renderText({
+  output$kpi_delta <- renderUI({
     d <- filtered(); req(nrow(d) >= 2)
     y <- d[[input$pollutant]]
-    cur <- y[length(y)]; prev <- y[length(y)-1]
-    if (is.finite(cur) && is.finite(prev) && prev != 0) {
+    cur <- tail(y, 1); prev <- tail(y, 2)[1]
+    if (!is.finite(cur) || !is.finite(prev) || prev == 0) {
+      val_text <- "s/d"
+      cls <- "vb-neutral"
+      icon <- "\u2014"
+    } else {
       pct <- (cur - prev) / prev
-      paste0(ifelse(pct >= 0, "+", ""), percent(pct, accuracy = 0.1))
-    } else "s/d"
+      pct_text <- scales::percent(pct, accuracy = 0.1)
+      # reglas para color/estado (ajusta umbrales)
+      if (pct <= -0.05) {        # mejora >5%
+        cls <- "vb-good"
+        icon <- "\u25BC"         # flecha abajo (mejora si contaminante baja)
+        sign_text <- paste0(pct_text, " (mejora)")
+      } else if (pct >= 0.05) {  # empeora >5%
+        cls <- "vb-bad"
+        icon <- "\u25B2"         # flecha arriba
+        sign_text <- paste0(pct_text, " (empeora)")
+      } else {
+        cls <- "vb-neutral"
+        icon <- "\u25B6"         # pequeño indicador neutro
+        sign_text <- paste0(pct_text, " (estable)")
+      }
+      val_text <- sign_text
+    }
+    
+    # construir HTML
+    div(class = paste("value-box", cls),
+        div(class = "vb-icon", icon),
+        div(
+          div(class = "vb-value", val_text),
+          div(class = "vb-label", "Cambio vs mes previo")
+        )
+    )
   })
+  
   
   output$kpi_max <- renderText({
     d <- filtered(); req(nrow(d) > 0)
