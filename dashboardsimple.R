@@ -2,6 +2,11 @@
 # Dashboard – Calidad del Aire Global
 # ===============================
 
+required_packages <- c("leaflet","sf","rnaturalearth","rnaturalearthdata","dplyr","DT","lubridate","scales")
+missing <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
+if(length(missing)) install.packages(missing)
+
+
 library(shiny)
 library(bslib)
 library(plotly)
