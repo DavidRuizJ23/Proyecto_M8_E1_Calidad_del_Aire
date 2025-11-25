@@ -46,6 +46,51 @@ data_monthly <- df %>%
   ) %>%
   arrange(Country, City, year_month)
 
+# instalar si hace falta
+# install.packages(c("rnaturalearth", "rnaturalearthdata", "sf", "leaflet"))
+
+library(rnaturalearth)
+library(sf)
+library(dplyr)
+library(leaflet)
+
+# 1) Promedio anual por país (todo el año)
+country_yearly <- data_monthly %>%
+  mutate(year = lubridate::year(year_month)) %>%
+  group_by(Country, year) %>%
+  summarise(across(pm25:wind, ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+
+# Si quieres un único año promedio (promedio de todo el periodo)
+country_avg_all <- country_yearly %>%
+  group_by(Country) %>%
+  summarise(across(pm25:wind, ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+
+# 2) Obtener geometría y centroides de países
+world <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+# Normalizar nombres para unir: intenta unir por NAME_LONG o admin
+# Ajusta si tus nombres de Country no coinciden exactamente
+centroids <- st_centroid(world) %>%
+  st_transform(crs = 4326) %>%
+  select(admin, geometry) %>%
+  mutate(lon = st_coordinates(geometry)[,1],
+         lat = st_coordinates(geometry)[,2]) %>%
+  st_drop_geometry()
+
+# 3) Unir con tus promedios (ajusta columna de unión)
+map_data <- country_avg_all %>%
+  left_join(centroids, by = c("Country" = "admin"))
+
+# 4) Crear popup con información resumida
+map_data <- map_data %>%
+  mutate(popup = paste0("<b>", Country, "</b><br/>",
+                        "PM2.5: ", round(pm25,1), " µg/m³<br/>",
+                        "PM10: ", round(pm10,1), " µg/m³<br/>",
+                        "NO2: ", round(no2,1), " µg/m³<br/>",
+                        "Viento: ", round(wind,1), " m/s"))
+
+
+
+
 # Agregado por país (para la comparación entre países)
 country_monthly <- data_monthly %>%
   group_by(Country, year_month) %>%
@@ -62,6 +107,7 @@ country_monthly <- data_monthly %>%
     .groups = "drop"
   )
 
+
 pollutant_labels <- c(
   pm25="PM2.5", pm10="PM10", no2="NO2", so2="SO2", co="CO", o3="O3",
   temp="Temperatura", hum="Humedad", wind="Velocidad del viento"
@@ -73,8 +119,24 @@ env_choices <- c(
   "Velocidad del viento" = "wind"
 )
 
+
+
+
+
+
+# --- Función simple para categorizar PM2.5 en niveles tipo AQI (US EPA aproximado) ---
+pm25_to_aqi_cat <- function(pm25) {
+  if (is.na(pm25)) return(NA_character_)
+  if (pm25 <= 12) return("Bueno")
+  if (pm25 <= 35.4) return("Moderado")
+  if (pm25 <= 55.4) return("Dañino para grupos sensibles")
+  if (pm25 <= 150.4) return("Dañino")
+  if (pm25 <= 250.4) return("Muy dañino")
+  return("Peligroso")
+}
+
 # ---------- UI ----------
-theme <- bs_theme(bootswatch = "flatly", base_font = font_google("Inter"))
+theme <- bs_theme(bootswatch = "cerulean", base_font = font_google("Inter"))
 
 ui <- page_sidebar(
   theme = theme,
@@ -142,11 +204,13 @@ ui <- page_sidebar(
   card(
     card_header(
       navset_pill(
+        id = "main_tabs",
         nav("Tendencias", withSpinner(plotlyOutput("time_plot", height = 420))),
         nav("Contaminación vs Ambiente",
             withSpinner(plotlyOutput("corr_city_plot", height = 480))),
         nav("Comparación países",
             withSpinner(plotlyOutput("country_compare_plot", height = 480))),
+        nav("Mapa", withSpinner(leafletOutput("map_countries", height = 600))),
         nav("Tabla de datos",
             withSpinner(DTOutput("table_city")))   # <-- nueva pestaña
       )
@@ -181,9 +245,17 @@ server <- function(input, output, session){
   output$kpi_current <- renderText({
     d <- filtered(); req(nrow(d) > 0)
     y <- d[[input$pollutant]]
-    v <- y[length(y)]
-    if (is.finite(v)) number(v, accuracy = 0.1) else "s/d"
+    v <- tail(y, 1)
+    if (!is.finite(v)) return("s/d")
+    # si el contaminante seleccionado no es pm25, mostramos solo valor; para PM2.5 añadimos categoría
+    if (input$pollutant == "pm25") {
+      cat <- pm25_to_aqi_cat(v)
+      paste0(number(v, accuracy = 0.1), " µg/m³ — ", cat)
+    } else {
+      number(v, accuracy = 0.1)
+    }
   })
+  
   
   output$kpi_context <- renderText({
     paste(input$city, "-", input$country)
@@ -204,6 +276,23 @@ server <- function(input, output, session){
     mx <- suppressWarnings(max(d[[input$pollutant]], na.rm = TRUE))
     if (is.finite(mx)) number(mx, accuracy = 0.1) else "s/d"
   })
+  output$map_countries <- renderLeaflet({
+    req(input$main_tabs == "Mapa")   # carga perezosa
+    md <- map_data %>% filter(!is.na(lat) & !is.na(lon))
+    req(nrow(md) > 0)
+    
+    pal <- colorNumeric("YlOrRd", domain = md$pm25, na.color = "gray")
+    leaflet(md) %>%
+      addTiles() %>%
+      addCircleMarkers(~lon, ~lat,
+                       radius = ~scales::rescale(pm25, to = c(4, 18), from = range(md$pm25, na.rm = TRUE)),
+                       color = ~pal(pm25),
+                       stroke = TRUE, weight = 1, fillOpacity = 0.85,
+                       popup = ~popup,
+                       label = ~paste0(Country, ": ", round(pm25,1), " µg/m³")) %>%
+      addLegend("bottomright", pal = pal, values = ~pm25, title = "PM2.5 (promedio)")
+  })
+  
   
   # ---------- Tendencia ----------
   output$time_plot <- renderPlotly({
