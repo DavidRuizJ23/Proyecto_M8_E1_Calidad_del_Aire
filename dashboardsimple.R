@@ -15,8 +15,8 @@ library(DT)     # <-- para la tabla tipo DataTable
 
 # ---------- Estilos ----------
 col_line <- "#2E86DE"  # azul principal
-col_ma   <- "#00B894"  # verde media móvil
-col_ref  <- "#B2BABB"  # gris mediana
+col_ma   <- "#3C7D22"  # verde media móvil
+col_ref  <- "#C00000"  # gris mediana
 SHOW_MA3 <- FALSE      # <- media móvil
 SHOW_MED <- TRUE       # <- mediana si te gusta
 
@@ -139,7 +139,7 @@ pm25_to_aqi_cat <- function(pm25) {
 theme <- bs_theme(bootswatch = "cerulean", base_font = font_google("Inter"))
 
 ui <- page_sidebar(
-  theme = theme,
+  theme = bs_theme(version = 5, bootswatch = "minty"),
   sidebar = sidebar(
     width = 320,
     selectInput("country", "País:",
@@ -442,7 +442,7 @@ server <- function(input, output, session){
         Viento  = wind
       )
     
-    datatable(
+    dt <- datatable(
       tabla,
       rownames = FALSE,
       filter   = "top",
@@ -451,7 +451,12 @@ server <- function(input, output, session){
         autoWidth  = TRUE
       )
     )
+    
+    # Formateo visual: 3 decimales (cámbialo a 2 si prefieres)
+    dt %>% formatRound(columns = c("PM2.5","PM10","NO2","SO2","CO","O3","Temp","Humedad","Viento"),
+                       digits = 3)
   })
+  
   
   # ---------- Descarga ----------
   output$dl_data <- downloadHandler(

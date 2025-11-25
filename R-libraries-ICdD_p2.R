@@ -117,9 +117,10 @@ library(lattice)
 require(igraph)
 library(umap)
 
-library(rnaturalearth)
+library(rnaturalearth) # libreria de las coordenadas.
 library(sf)
-library(leaflet)
+library(leaflet) # librería para hacer el join de coordenadas
+library(bslib) # libreria para temas
 
 
 #df %>% glimpse()
