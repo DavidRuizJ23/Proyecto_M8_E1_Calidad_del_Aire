@@ -117,4 +117,9 @@ library(lattice)
 require(igraph)
 library(umap)
 
+library(rnaturalearth)
+library(sf)
+library(leaflet)
+
+
 #df %>% glimpse()
