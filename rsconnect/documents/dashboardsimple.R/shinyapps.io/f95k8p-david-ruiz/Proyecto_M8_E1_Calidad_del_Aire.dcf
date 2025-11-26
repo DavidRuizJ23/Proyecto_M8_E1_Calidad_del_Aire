@@ -5,9 +5,9 @@ account: f95k8p-david-ruiz
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 16147478
-bundleId: 11233578
+bundleId: 11233616
 url: https://f95k8p-david-ruiz.shinyapps.io/Proyecto_M8_E1_Calidad_del_Aire/
 version: 1
 asMultiple: FALSE
 asStatic: FALSE
-ignoredFiles: dashboardsimple_respaldo.R|DataCleaning_y_EDA_2.html|DataCleaning_y_EDA_2.Rmd|df.RData|EDA.Rmd|Proyecto_8_Calidad_del_aire.zip|README.md
+ignoredFiles: dashboardsimple_respaldo.R|DataCleaning_y_EDA_2.html|DataCleaning_y_EDA_2.Rmd|EDA.Rmd|Proyecto_8_Calidad_del_aire.zip|README.md
