@@ -2,7 +2,7 @@
 # Dashboard – Calidad del Aire Global
 # ===============================
 
-required_packages <- c("leaflet","sf","rnaturalearth","rnaturalearthdata","dplyr","DT","lubridate","scales")
+required_packages <- c("sf","rnaturalearth","rnaturalearthdata","dplyr","DT","lubridate","scales")
 missing <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
 if(length(missing)) install.packages(missing)
 
@@ -17,7 +17,6 @@ library(shinycssloaders)
 library(scales)
 library(tibble)
 library(DT)
-library(leaflet)
 library(sf)
 library(rnaturalearth)
 
