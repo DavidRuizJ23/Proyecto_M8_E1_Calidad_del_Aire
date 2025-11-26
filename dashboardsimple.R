@@ -245,7 +245,7 @@ ui <- page_sidebar(
             withSpinner(plotlyOutput("corr_city_plot", height = 480))),
         nav("Comparación países",
             withSpinner(plotlyOutput("country_compare_plot", height = 480))),
-        nav("Mapa", withSpinner(leafletOutput("map_countries", height = 600))),
+        nav("Mapa", withSpinner(plotlyOutput("map_countries", height = 600))),
         nav("Tabla de datos",
             withSpinner(DTOutput("table_city"))),
         nav("Insights y conclusiones",
@@ -386,24 +386,36 @@ server <- function(input, output, session){
   })
   
   # ---------- Mapa ----------
-  output$map_countries <- renderLeaflet({
+  # ---------- Mapa con Plotly ----------
+  output$map_countries <- renderPlotly({
     md <- map_data_range() %>% filter(!is.na(lat) & !is.na(lon))
     req(nrow(md) > 0)
     
-    pal <- colorNumeric("YlOrRd", domain = md$pm25, na.color = "gray")
-    
-    leaflet(md) %>%
-      addTiles() %>%
-      addCircleMarkers(
-        ~lon, ~lat,
-        radius = ~scales::rescale(pm25, to = c(4, 18), from = range(md$pm25, na.rm = TRUE)),
-        color = ~pal(pm25),
-        stroke = TRUE, weight = 1,
-        fillOpacity = 0.85,
-        popup = ~popup,
-        label = ~paste0(Country, ": ", round(pm25,1), " µg/m³")
-      ) %>%
-      addLegend("bottomright", pal = pal, values = ~pm25, title = "PM2.5 (promedio)")
+    plot_ly(
+      data = md,
+      type = "scattergeo",
+      lon = ~lon,
+      lat = ~lat,
+      text = ~popup,
+      marker = list(
+        size = ~scales::rescale(pm25, to = c(6, 18), from = range(md$pm25, na.rm = TRUE)),
+        color = ~pm25,
+        colorscale = "YlOrRd",
+        showscale = TRUE,
+        colorbar = list(title = "PM2.5 (promedio)")
+      )
+    ) %>%
+      layout(
+        geo = list(
+          scope = "world",
+          projection = list(type = "natural earth"),
+          showland = TRUE,
+          landcolor = "rgb(229, 229, 229)",
+          showocean = TRUE,
+          oceancolor = "rgb(204, 229, 255)"
+        ),
+        title = "Mapa global de PM2.5"
+      )
   })
   # ---------- Tendencia ----------
   output$time_plot <- renderPlotly({
